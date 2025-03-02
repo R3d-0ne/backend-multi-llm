@@ -19,3 +19,24 @@ class DiscussionRequest(BaseModel):
     """ Modèle pour mettre à jour une discussion """
     context_id: str
     summary: str
+
+
+
+class CreateDiscussionRequest(BaseModel):
+    """Modèle pour la création d'une discussion"""
+    context_id: str
+    title: str
+
+class SearchDiscussionRequest(BaseModel):
+    """Modèle pour la recherche de discussions similaires"""
+    query: str
+
+class AddHistoryRequest(BaseModel):
+    """Modèle pour ajouter un échange dans l'historique"""
+    discussion_id: str
+    question: str
+    response: str
+
+class SearchHistoryRequest(BaseModel):
+    """Modèle pour la recherche d'échanges similaires"""
+    query: str

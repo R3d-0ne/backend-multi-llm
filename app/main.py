@@ -1,24 +1,31 @@
+import spacy
 from fastapi import FastAPI, HTTPException
 import os
 import logging
+from fastapi.middleware.cors import CORSMiddleware
 
-from .services.mongo_service import mongo_service
-from .routes import contexts, history, generate, settings, discussions
+# Importation des routes de l'application
+from .routes import contexts, history, generate, settings, messages, discussions, documents
+# Importation du service Qdrant
+from .services.qdrant_service import qdrant_service
+
+from .database import create_or_update_collections
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+# Initialisation des modèles NLP
 
-# Initialisation FastAPI
+# Initialisation de l'application FastAPI
 app = FastAPI()
-from fastapi.middleware.cors import CORSMiddleware
 
+# Configuration CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Mets ["http://localhost:5173"] si tu veux restreindre au frontend uniquement
+    allow_origins=["*"],  # Restreindre si besoin, par exemple ["http://localhost:5173"]
     allow_credentials=True,
-    allow_methods=["*"],  # Autorise toutes les méthodes HTTP (POST, GET, OPTIONS, etc.)
-    allow_headers=["*"],  # Autorise tous les headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Inclusion des routes
@@ -27,21 +34,37 @@ app.include_router(history.router)
 app.include_router(settings.router)
 app.include_router(generate.router)
 app.include_router(discussions.router)
+app.include_router(messages.router)
+app.include_router(documents.router)
 
 
-# Charger l'URL d'Ollama depuis les variables d'environnement
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://host.docker.internal:11434")
+# Récupération de l'URL d'Ollama depuis les variables d'environnement (pour un autre service)
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 
-
-# Route de test MongoDB
+# Route de test pour vérifier la connexion à Qdrant
 @app.get("/")
 async def read_root():
     try:
-        collections = mongo_service.db.list_collection_names()
-        return {"status": "success", "collections": collections}
+        # Vérification de la connexion à Qdrant en récupérant des informations sur le serveur
+        collections_info = qdrant_service.client.get_collections()
+        logger.info(f"Connecté à Qdrant")
+        logger.info(f"Connecté à Qdrant : {collections_info}")
+
+        # Créer ou mettre à jour les collections et récupérer un résumé
+        summary = create_or_update_collections([
+            {"name": "contexts", "vector_size": 384},
+            {"name": "discussions", "vector_size": 384},
+            {"name": "history", "vector_size": 384},
+            {"name": "settings", "vector_size": 1},
+            {"name": "messages", "vector_size": 384},
+            {"name": "documents", "vector_size": 384},
+        ])
+
+        return {
+            "status": "success",
+            "message": f"Collections existantes:",
+            "collections": summary
+        }
     except Exception as e:
-        logger.error(f"Erreur MongoDB: {str(e)}")
-        raise HTTPException(status_code=500, detail="Erreur de connexion à MongoDB")
-
-
-
+        logger.error(f"Erreur lors de la connexion à Qdrant : {str(e)}")
+        raise HTTPException(status_code=500, detail="Erreur de connexion à Qdrant")

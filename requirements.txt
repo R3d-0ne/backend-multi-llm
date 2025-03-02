@@ -1,8 +1,28 @@
-fastapi~=0.115.8
-uvicorn
-pymongo~=4.11
-requests~=2.32.3
-python-dotenv~=1.0.1
+# Framework web
+fastapi
+uvicorn[standard]
 
+# Manipulation des requêtes HTTP
+requests
 
-pydantic~=2.10.6
+# Gestion des modèles de données
+pydantic
+
+# Variables d'environnement
+python-dotenv
+
+# NLP et embeddings
+spacy
+nltk
+sentence-transformers
+
+# Base vectorielle
+qdrant-client
+
+# OCR et PDF
+pdf2image
+pytesseract
+poppler-utils  # Nécessaire pour `pdf2image` sous Linux
+flair
+pyspellchecker
+camelot-py

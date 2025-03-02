@@ -1,76 +1,106 @@
+from pydantic import BaseModel
+from typing import Optional
 import requests
-import os
-from .discussions_service import discussion_service
-from .history_service import history_service
-from .context_service import context_service
+import logging
+from fastapi import HTTPException
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://host.docker.internal:11434")
+from .context_service import context_service
+from .discussions_service import discussions_service
+from .message_service import message_service
+from .settings_service import settings_service
+from ..models.message import Message
+
+
+class GenerateRequest(BaseModel):
+    discussion_id: Optional[str] = None  # Optionnel : si non fourni, une discussion sera créée
+    settings_id: Optional[str] = None      # Le setting_id à utiliser, s'il y en a plusieurs
+    current_message: str
+    additional_info: Optional[str] = None
+
+
+logger = logging.getLogger(__name__)
 
 
 class GenerateService:
     def __init__(self):
-        self.url = f"{OLLAMA_URL}/api/generate"
+        # URL de l'API DeepSeek (Ollama) en local
+        self.url = "http://host.docker.internal:11434/api/generate"
 
-    def format_messages(self, history):
-        """Transforme l'historique des messages pour l'intégrer au prompt"""
-        formatted_messages = []
-        for msg in history:
-            if "question" in msg and "response" in msg:
-                formatted_messages.append(f"Utilisateur: {msg['question']}")
-                formatted_messages.append(f"Assistant: {msg['response']}")
+    def generate_response(
+            self,
+            discussion_id: Optional[str],
+            settings_id: Optional[str],
+            current_message: str,
+            additional_info: Optional[str] = None
+    ) -> dict:
+        """
+        Orchestre la génération d'une réponse.
+        Si aucun discussion_id n'est fourni, il crée une nouvelle discussion.
+        Utilise le settings_id si fourni pour récupérer les paramètres spécifiques.
+        Ensuite, il construit le prompt via le service de contexte et envoie ce prompt à DeepSeek.
+        """
+        try:
+            # Si discussion_id n'est pas fourni, créer une nouvelle discussion via le service de discussions.
+            if not discussion_id:
+                new_discussion = discussions_service.add_discussion("Nouvelle discussion")
+                discussion_id = new_discussion.get("id")
+                logger.info(f"Nouvelle discussion créée avec l'ID: {discussion_id}")
 
-        return "\n".join(formatted_messages) if formatted_messages else "Aucun historique disponible."
+            # Récupérer les settings à partir du settings_id s'il est fourni, sinon utiliser le settings par défaut.
+            if settings_id:
+                settings_data = settings_service.get_settings_by_id(settings_id)
+                if not settings_data:
+                    logger.error(f"Settings non trouvés pour l'ID {settings_id}")
+                    return {"message": "Settings non trouvés", "id": None}
+            else:
+                settings_data = settings_service.get_settings()
 
-    def generate_response(self, discussion_id: str, question: str, context_id: str):
-        """Génère une réponse en utilisant le résumé et l'historique"""
+            # Appel du service de contexte pour construire et enregistrer le prompt final.
+            # On passe les settings récupérés dans ce cas.
+            context_result = context_service.save_full_context(
+                discussion_id=discussion_id,
+                current_message=current_message,
+                additional_info=additional_info,
+                settings_id=settings_id  # Corrected parameter name
+            )
+            context_id = context_result.get("id")
+            # Récupérer le prompt stocké via le service de contexte.
+            prompt_data = context_service.get_context(context_id)
+            if not prompt_data or "prompt" not in prompt_data:
+                raise HTTPException(status_code=500, detail="Erreur lors de la récupération du prompt")
+            prompt = prompt_data["prompt"]
+            logger.info(f"Prompt final construit :\n{prompt}")
 
-        # 🔹 Vérifier si l'ID de discussion est valide
-        if not isinstance(discussion_id, str) or len(discussion_id) != 24:
-            return {"error": "L'ID de la discussion est invalide"}
+            # Envoyer la requête à DeepSeek (Ollama)
+            response = requests.post(
+                self.url,
+                json={"model": "deepseek-r1:7b", "prompt": prompt, "stream": False}
+            )
+            if response.status_code != 200:
+                logger.error(f"Erreur API DeepSeek: {response.text}")
+                return {"error": f"Erreur avec DeepSeek: {response.text}"}
+            data = response.json()
+            answer = data.get("response", "")
+            # Enregistrer le message de l'utilisateur
+            user_message = Message(
+                discussion_id=discussion_id,
+                sender="user",
+                text=current_message
+            )
+            message_service.send_message(user_message)
 
-        # 🔹 Charger le contexte
-        context = context_service.get_context(context_id)
-        if not context:
-            return {"error": "Contexte non trouvé"}
-
-        # 🔹 Récupérer le résumé de la discussion
-        summary = discussion_service.get_summary(discussion_id) or "Aucun résumé disponible."
-
-        # 🔹 Récupérer l'historique de la discussion
-        history = history_service.get_history_by_discussion(discussion_id)
-        formatted_messages = self.format_messages(history)
-
-        # 🔹 Construire le prompt simple
-        prompt = (
-            f"💡 **Résumé de la discussion** :\n{summary}\n\n"
-            # f"📜 **Historique des échanges** :\n{formatted_messages}\n\n"
-            f"📝 **Nouvelle question** :\nUtilisateur : {question}\nAssistant :"
-        )
-
-        print('-----------------------------------------------------------')
-        print(f'Prompt envoyé à DeepSeek :\n{prompt}')
-        print('-----------------------------------------------------------')
-
-        # 🔹 Envoyer la requête à Ollama
-        response = requests.post(
-            self.url,
-            json={"model": "deepseek-r1:7b", "prompt": prompt, "stream": False}
-        )
-
-        if response.status_code != 200:
-            return {"error": f"Erreur avec Ollama: {response.text}"}
-
-        data = response.json()
-        answer = data.get("response", "")
-
-        # ✅ Ajouter l'ID de discussion dans l'historique
-        history_service.add_history(discussion_id, question, answer, context_id)
-
-        # ✅ Mettre à jour le résumé avec l'ID de la discussion
-        discussion_service.update_summary(discussion_id, question, answer)
-
-        return {"response": answer}
+            # Enregistrer la réponse de l'assistant
+            assistant_message = Message(
+                discussion_id=discussion_id,
+                sender="assistant",
+                text=answer
+            )
+            message_service.send_message(assistant_message)
+            return {"response": answer, "context_id": context_id, "discussion_id": discussion_id}
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération de la réponse: {e}")
+            raise HTTPException(status_code=500, detail="Erreur lors de la génération de la réponse")
 
 
-# Singleton
+# Instance singleton
 generate_service = GenerateService()
