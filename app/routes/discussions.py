@@ -7,8 +7,14 @@ from ..services.discussions_service import discussions_service
 router = APIRouter()
 # Définition des routes FastAPI
 @router.post("/discussions/", status_code=201)
-async def create_discussion(discussion: Discussion):
-    return discussions_service.add_discussion(discussion)
+async def create_discussion(request: CreateDiscussionRequest):
+    # Créer une discussion avec le titre fourni ou par défaut
+    discussion = Discussion(title=request.title)
+    
+    # Ajouter la discussion via le service
+    result = discussions_service.add_discussion(discussion)
+    
+    return result
 
 
 @router.get("/discussions/{discussion_id}")

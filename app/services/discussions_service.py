@@ -34,8 +34,9 @@ class DiscussionService:
             # Calcul de l'embedding pour la discussion
             embedding = embedding_service.get_embedding(discussion_text)
             discussion_id = str(uuid.uuid4())
-            payload = {"title": discussion_text,
-                       }
+            
+            # Créer le payload avec le titre
+            payload = {"title": discussion_text}
 
             qdrant_service.upsert_document(
                 collection_name=self.COLLECTION_NAME,
@@ -43,6 +44,8 @@ class DiscussionService:
                 vector=embedding,
                 payload=payload
             )
+            
+            # Retourner l'ID de la discussion créée
             return {"id": discussion_id, "message": "Discussion ajoutée avec succès"}
         except Exception as e:
             logger.error(f"Erreur lors de l'ajout de la discussion: {e}")
@@ -91,8 +94,8 @@ class DiscussionService:
         Met à jour une discussion existante en régénérant l'embedding et en mettant à jour le payload.
         """
         try:
-            embedding = embedding_service.get_embedding(discussion.text)
-            payload = {"text": discussion.text}
+            embedding = embedding_service.get_embedding(discussion.title)
+            payload = {"title": discussion.title}
             qdrant_service.upsert_document(
                 collection_name=self.COLLECTION_NAME,
                 document_id=discussion_id,
@@ -145,44 +148,45 @@ class DiscussionService:
         except Exception as e:
             logger.error(f"Erreur lors de la recherche de discussions similaires: {e}")
             raise HTTPException(status_code=500, detail="Erreur lors de la recherche de discussions similaires")
-    def append_message(self, discussion_id: str, role: str, message: str) -> dict:
-        """
-        Ajoute un nouveau message à une discussion existante.
-        Le nouveau message (avec rôle 'user' ou 'assistant') est ajouté à la liste des messages,
-        le texte global de la discussion est reconstruit et l'embedding est recalculé.
-        """
-        try:
-            # Récupérer la discussion existante
-            current = self.get_discussion(discussion_id)
-            if not current:
-                raise HTTPException(status_code=404, detail="Discussion introuvable")
+   
+    # def append_message(self, discussion_id: str, role: str, message: str) -> dict:
+        # """
+        # Ajoute un nouveau message à une discussion existante.
+        # Le nouveau message (avec rôle 'user' ou 'assistant') est ajouté à la liste des messages,
+        # le texte global de la discussion est reconstruit et l'embedding est recalculé.
+        # """
+        # try:
+        #     # Récupérer la discussion existante
+        #     current = self.get_discussion(discussion_id)
+        #     if not current:
+        #         raise HTTPException(status_code=404, detail="Discussion introuvable")
 
-            payload = current.get("payload", {})
-            messages = payload.get("messages", [])
-            # Ajouter le nouveau message
-            messages.append({
-                "role": role,
-                "message": message,
-                "timestamp": datetime.utcnow().isoformat()
-            })
-            # Reconstruire le texte global à partir de tous les messages
-            concatenated_text = "\n".join([m["message"] for m in messages])
-            # Recalculer l'embedding pour la discussion mise à jour
-            new_embedding = embedding_service.get_embedding(concatenated_text)
-            new_payload = {
-                "text": concatenated_text,
-                "messages": messages
-            }
-            qdrant_service.upsert_document(
-                collection_name=self.COLLECTION_NAME,
-                document_id=discussion_id,
-                vector=new_embedding,
-                payload=new_payload
-            )
-            return {"id": discussion_id, "message": "Message ajouté avec succès", "payload": new_payload}
-        except Exception as e:
-            logger.error(f"Erreur lors de l'ajout du message: {e}")
-            raise HTTPException(status_code=500, detail="Erreur lors de l'ajout du message")
+        #     payload = current.get("payload", {})
+        #     messages = payload.get("messages", [])
+        #     # Ajouter le nouveau message
+        #     messages.append({
+        #         "role": role,
+        #         "message": message,
+        #         "timestamp": datetime.utcnow().isoformat()
+        #     })
+        #     # Reconstruire le texte global à partir de tous les messages
+        #     concatenated_text = "\n".join([m["message"] for m in messages])
+        #     # Recalculer l'embedding pour la discussion mise à jour
+        #     new_embedding = embedding_service.get_embedding(concatenated_text)
+        #     new_payload = {
+        #         "text": concatenated_text,
+        #         "messages": messages
+        #     }
+        #     qdrant_service.upsert_document(
+        #         collection_name=self.COLLECTION_NAME,
+        #         document_id=discussion_id,
+        #         vector=new_embedding,
+        #         payload=new_payload
+        #     )
+        #     return {"id": discussion_id, "message": "Message ajouté avec succès", "payload": new_payload}
+        # except Exception as e:
+        #     logger.error(f"Erreur lors de l'ajout du message: {e}")
+        #     raise HTTPException(status_code=500, detail="Erreur lors de l'ajout du message")
 
 
 # Instance unique du service

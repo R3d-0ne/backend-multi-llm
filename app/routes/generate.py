@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import Optional
 
 from ..services.generate_service import generate_service
 from ..services.settings_service import settings_service
@@ -8,10 +9,10 @@ router = APIRouter()
 
 
 class GenerateRequest(BaseModel):
-    discussion_id: str
-    settings_id: str
+    discussion_id: Optional[str] = None
+    settings_id: Optional[str] = None
     current_message: str
-    additional_info: str = None
+    additional_info: Optional[str] = None
 
 
 @router.post("/generate", status_code=200)

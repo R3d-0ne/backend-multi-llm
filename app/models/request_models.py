@@ -24,8 +24,7 @@ class DiscussionRequest(BaseModel):
 
 class CreateDiscussionRequest(BaseModel):
     """Modèle pour la création d'une discussion"""
-    context_id: str
-    title: str
+    title: str = "Nouvelle discussion"
 
 class SearchDiscussionRequest(BaseModel):
     """Modèle pour la recherche de discussions similaires"""
