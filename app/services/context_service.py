@@ -75,7 +75,7 @@ class ContextService:
             self,
             discussion_id: str,
             current_message: str,
-            settings_id: str,
+            settings_id: Optional[str] = None,
             additional_info: Optional[str] = None
     ) -> dict:
         """
@@ -96,13 +96,18 @@ class ContextService:
                 for record in messages
             ]
 
-            # Récupérer les settings par leur ID
-            settings_data = settings_service.get_settings_by_id(settings_id)
-            if not settings_data:
-                raise HTTPException(status_code=404, detail=f"Settings non trouvés pour l'ID {settings_id}")
+            # Récupérer les settings par leur ID ou utiliser les settings par défaut
+            settings_data = None
+            if settings_id:
+                settings_data = settings_service.get_settings_by_id(settings_id)
+                if not settings_data:
+                    logger.warning(f"Settings non trouvés pour l'ID {settings_id}, utilisation des settings par défaut")
+                    settings_data = settings_service.get_settings()
+            else:
+                settings_data = settings_service.get_settings()
 
             # Construire le prompt final
-            prompt = self.build_prompt(discussion_id, settings_id, current_message, history_texts, settings_data,
+            prompt = self.build_prompt(discussion_id, settings_id or "", current_message, history_texts, settings_data,
                                        additional_info)
             logger.info(f"Prompt construit:\n{prompt}")
 

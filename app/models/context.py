@@ -12,9 +12,9 @@ class Context(BaseModel):
         ...,
         description="Identifiant de la discussion associée"
     )
-    setting_id: str = Field(
-        ...,
-        description="Identifiant des paramètres de la discussion"
+    setting_id: Optional[str] = Field(
+        None,
+        description="Identifiant des paramètres de la discussion (optionnel)"
     )
     current_message: str = Field(
         ...,
@@ -49,6 +49,16 @@ class Context(BaseModel):
             return str(v)
         except Exception as e:
             raise ValueError("Le discussion_id doit être un UUID valide") from e
+
+    @field_validator("setting_id", mode="before")
+    def validate_setting_id(cls, v):
+        if v is None:
+            return v
+        try:
+            uuid.UUID(str(v))
+            return str(v)
+        except Exception as e:
+            raise ValueError("Le setting_id doit être un UUID valide") from e
 
     model_config = {
         "populate_by_name": True,
