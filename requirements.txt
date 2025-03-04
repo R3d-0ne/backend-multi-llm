@@ -26,3 +26,4 @@ poppler-utils  # Nécessaire pour `pdf2image` sous Linux
 flair
 pyspellchecker
 camelot-py
+python-multipart

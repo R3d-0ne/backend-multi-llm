@@ -4,6 +4,8 @@ from .OcrTask import OCRTask
 from .PreprocessingTask import PreprocessingTask
 from .TableDetectionTask import TableDetectionTask
 from .UploadDocumentTask import UploadDocumentTask
+from .EmbeddingTask import EmbeddingTask
+from .StorageTask import StorageTask
 from ..PipelineOrchestrator import PipelineOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -22,8 +24,8 @@ class TraitementOrchestrator:
         self.pipeline.add_step(OCRTask())
         self.pipeline.add_step(TableDetectionTask())
         self.pipeline.add_step(PreprocessingTask())
-        # self.pipeline.add_step(EmbeddingsTask())
-        # self.pipeline.add_step(StorageTask())
+        self.pipeline.add_step(EmbeddingTask())
+        self.pipeline.add_step(StorageTask())
 
     def run_pipeline(self, initial_data: str) -> dict:
         """

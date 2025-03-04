@@ -1,31 +1,47 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from ..libs.traitement_document.traitement_task.TraitementOrchestrator import TraitementOrchestrator
 from ..services.document_upload_service import DocumentUploadService
+import os
+import tempfile
 
 router = APIRouter()
 upload_service = DocumentUploadService()
 
 
 @router.post("/documents/", status_code=201)
-async def create_document(source: str):
+async def create_document(file: UploadFile = File(...)):
     """
-    Dépose un document en utilisant le chemin source fourni et lance le pipeline de traitement.
-
-    :param source: Chemin du fichier à déposer.
-    :return: Un dictionnaire avec l'ID du document et le résultat du pipeline de traitement.
+    Upload un document et lance le pipeline de traitement.
+    
+    :param file: Le fichier à uploader
+    :return: Un dictionnaire avec l'ID du document et le résultat du pipeline de traitement
     """
     try:
-        # Lancer le pipeline de traitement via l'orchestrateur.
-        # L'orchestrateur se charge lui-même de déposer le document et de lancer toutes les étapes.
+        # Récupérer l'extension du fichier original
+        original_filename = file.filename
+        file_extension = os.path.splitext(original_filename)[1].lower()
+
+        # Créer un fichier temporaire avec l'extension appropriée
+        with tempfile.NamedTemporaryFile(suffix=file_extension, delete=False) as temp_file:
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+
+        # Lancer le pipeline de traitement via l'orchestrateur
         orchestrator = TraitementOrchestrator()
-        result = orchestrator.run_pipeline(source)
+        result = orchestrator.run_pipeline(temp_file_path)
+
+        # Nettoyer le fichier temporaire
+        os.unlink(temp_file_path)
+
         return {
+            "success": True,
+            "message": "Document uploadé et traitement lancé avec succès",
             "document_id": result.get("document_id"),
-            "message": "Traitement lancé avec succès.",
             "result": result
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erreur lors du dépôt : {e}")
+        raise HTTPException(status_code=400, detail=f"Erreur lors de l'upload : {str(e)}")
 
 
 @router.get("/documents/{document_id}")

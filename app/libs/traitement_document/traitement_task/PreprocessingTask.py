@@ -48,6 +48,7 @@ class PreprocessingTask(Traitement):
             "tables_count": data.get("tables_count"),
             "pages_with_tables": data.get("pages_with_tables"),
             "details_tables": data.get("details_tables"),
+            "image_paths": data.get("image_paths", [])
         }
 
 
@@ -174,6 +175,7 @@ class PreprocessingTask(Traitement):
                 "tables_count": result.get("tables_count"),
                 "pages_with_tables": result.get("pages_with_tables"),
                 "details_tables": result.get("details_tables"),
+                "image_paths": result.get("image_paths", [])
             }
 
         except Exception as e:

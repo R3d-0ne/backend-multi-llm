@@ -70,7 +70,7 @@ class ContextService:
         parts.extend(formatted_messages)
 
         return "\n\n".join(parts)
-
+ 
     def save_full_context(
             self,
             discussion_id: str,

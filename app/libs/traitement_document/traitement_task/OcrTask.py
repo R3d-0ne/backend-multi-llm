@@ -47,6 +47,7 @@ class OCRTask(Traitement):
           - 'document_id', 'deposited_path', 'extension', 'requires_ocr' (issus de l'étape précédente)
           - 'extracted_text': le texte extrait
           - 'text_file_path': chemin du fichier texte (créé pour un PDF ou identique au deposited_path si déjà en texte)
+          - 'image_paths': liste des chemins des images extraites
         """
         # Copie du dictionnaire pour le résultat final
         result = prepared_data.copy()
@@ -62,18 +63,31 @@ class OCRTask(Traitement):
 
             logger.info(f"{self.name} - Conversion terminée, pages extraites : {len(images)}")
             extracted_text = ""
+            image_paths = []
+            
+            # Créer un dossier unique pour le document avec son ID
+            document_dir = os.path.join(os.path.dirname(file_path), prepared_data['document_id'])
+            images_dir = os.path.join(document_dir, "images")
+            os.makedirs(images_dir, exist_ok=True)
+            
             for idx, image in enumerate(images):
                 try:
                     logger.info(f"{self.name} - Extraction OCR sur la page {idx + 1}")
                     page_text = pytesseract.image_to_string(image, lang='eng')
                     extracted_text += page_text + "\n"
+                    
+                    # Sauvegarder l'image dans le dossier unique du document
+                    image_path = os.path.join(images_dir, f"page_{idx + 1}.png")
+                    image.save(image_path, "PNG")
+                    image_paths.append(image_path)
+                    logger.info(f"{self.name} - Image de la page {idx + 1} sauvegardée : {image_path}")
                 except Exception as e:
                     logger.error(f"{self.name} - Erreur lors de l'extraction OCR sur la page {idx + 1} : {e}")
                     raise e
 
-            # Enregistrer le texte extrait dans un fichier .txt dans le même dossier d'upload
+            # Enregistrer le texte extrait dans le dossier unique du document
             text_file_path = os.path.join(
-                os.path.dirname(file_path),
+                document_dir,
                 f"{prepared_data['document_id']}.txt"
             )
             try:
@@ -86,6 +100,7 @@ class OCRTask(Traitement):
 
             result["extracted_text"] = extracted_text
             result["text_file_path"] = text_file_path
+            result["image_paths"] = image_paths
 
         else:
             # Lecture directe du texte (fichier déjà en format texte)
@@ -105,5 +120,6 @@ class OCRTask(Traitement):
             "extension": result.get("extension"),
             "requires_ocr": result.get("requires_ocr"),
             "extracted_text": result.get("extracted_text"),
-            "text_file_path": result.get("text_file_path")
+            "text_file_path": result.get("text_file_path"),
+            "image_paths": result.get("image_paths", [])
         }

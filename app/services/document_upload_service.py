@@ -43,7 +43,13 @@ class DocumentUploadService:
 
         # Génération d'un identifiant unique pour le document
         document_id = str(uuid.uuid4())
-        destination = os.path.join(self.upload_folder, f"{document_id}{extension}")
+        
+        # Création du dossier unique pour le document
+        document_dir = os.path.join(self.upload_folder, document_id)
+        os.makedirs(document_dir, exist_ok=True)
+        
+        # Copie du fichier dans le dossier unique
+        destination = os.path.join(document_dir, f"original{extension}")
 
         # Tentative de copie du fichier dans le dossier de dépôt
         try:
@@ -63,9 +69,14 @@ class DocumentUploadService:
         :return: Chemin complet du fichier déposé.
         :raises FileNotFoundError: Si le document n'est pas trouvé.
         """
-        for filename in os.listdir(self.upload_folder):
-            if filename.startswith(document_id):
-                return os.path.join(self.upload_folder, filename)
+        document_dir = os.path.join(self.upload_folder, document_id)
+        if not os.path.exists(document_dir):
+            raise FileNotFoundError("Document non trouvé.")
+            
+        # Chercher le fichier original dans le dossier du document
+        for filename in os.listdir(document_dir):
+            if filename.startswith("original"):
+                return os.path.join(document_dir, filename)
         raise FileNotFoundError("Document non trouvé.")
 
     def delete_document(self, document_id: str) -> bool:
