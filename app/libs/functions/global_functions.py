@@ -1,16 +1,15 @@
 import logging
+import os
 import re
-from spellchecker import SpellChecker
 import flair
 import numpy as np
-from nltk.corpus import wordnet
-from nltk.stem.snowball import FrenchStemmer
 from sentence_transformers import util
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import pipeline
 import base64
+from nltk.stem.snowball import FrenchStemmer
 
-from ...services.model_loader import paraphrase_model, nlp, nlp_flair, spell, bert_large
+from ...services.model_loader import nlp, nlp_flair, bert_large
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -223,6 +222,33 @@ def convert_numpy_types(data):
         return data
 
 
+def create_temp_directory(base_path: str, prefix: str = "temp_") -> str:
+    """Crée un dossier temporaire unique pour le traitement des documents."""
+    try:
+        import tempfile
+        temp_dir = tempfile.mkdtemp(prefix=prefix, dir=base_path)
+        logger.info(f"Dossier temporaire créé : {temp_dir}")
+        return temp_dir
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la création du dossier temporaire : {e}")
+        raise
+
+
+def cleanup_temp_directory(temp_dir: str) -> bool:
+    """Supprime un dossier temporaire et son contenu."""
+    try:
+        import shutil
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+            logger.info(f"Dossier temporaire supprimé : {temp_dir}")
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la suppression du dossier temporaire : {e}")
+        return False
+
+
+
 # def extract_entities_advanced(
 #     text: str,
 #     min_score: float = 0.5
@@ -366,7 +392,6 @@ def extract_entities_advanced(
 
     # Conversion récursive des types numpy en types Python natifs
     result = {
-        "cleaned_text": cleaned_text,
         "entities": entities,
         "raw_output": raw_output
     }
@@ -397,24 +422,6 @@ def correct_ocr_errors(text):
         # Nettoyage : suppression d'espaces multiples
         text = re.sub(r'\s+', ' ', text).strip()
 
-        # # Correction orthographique et vérification avec WordNet pour le français
-        # words = text.split()
-        # corrected_words = []
-        #
-        # for word in words:
-        #     # Correction du mot via autocorrect (pour les mots de plus de 2 caractères)
-        #     corrected_word = spell.correction(word) if len(word) > 2 else word
-        #
-        #     # Vérifier avec WordNet (en français) : si des synsets existent pour le mot corrigé, on le garde
-        #     # Note : wordnet.synsets() attend une chaîne, donc on s'assure que corrected_word est bien une chaîne.
-        #     if isinstance(corrected_word, str) and wordnet.synsets(corrected_word, lang='fra'):
-        #         corrected_words.append(corrected_word)
-        #     else:
-        #         # Sinon, on garde le mot original ou la correction si elle est une chaîne
-        #         corrected_words.append(corrected_word if isinstance(corrected_word, str) else str(corrected_word))
-        #
-        # corrected_text = " ".join(corrected_words)
-
         # Correction contextuelle supplémentaire : par exemple, transformer "l" en "1" si nécessaire
         corrected_text = re.sub(r'(?<=\w)l(?=\d)', '1', text)
 
@@ -423,53 +430,6 @@ def correct_ocr_errors(text):
     except Exception as e:
         logger.error(f"❌ Erreur lors de la correction OCR : {e}")
         return text
-
-
-def get_synonym(word):
-    """
-    Récupère un synonyme du mot donné en utilisant WordNet.
-    """
-    try:
-        if not isinstance(word, str):
-            raise TypeError("L'entrée doit être une chaîne de caractères.")
-
-        synsets = wordnet.synsets(word, lang="fra")
-        if synsets:
-            synonym = synsets[0].lemmas("fra")[0].name()
-            return synonym if synonym != word else word
-
-        return word
-
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de l'extraction du synonyme pour '{word}': {e}")
-        return word
-
-
-def replace_synonyms_selective(text):
-    """
-    Remplace uniquement les mots qui ne sont pas des entités nommées.
-    """
-    try:
-        if not isinstance(text, str):
-            raise TypeError("L'entrée doit être une chaîne de caractères.")
-
-        # Chargement du modèle seulement si nécessaire
-        # nlp = spacy.load("fr_core_news_md")
-        doc = nlp(text)
-
-        new_tokens = []
-        for token in doc:
-            if token.ent_type_:
-                new_tokens.append(token.text)
-            else:
-                new_tokens.append(get_synonym(token.text))
-
-        return " ".join(new_tokens)
-
-    except Exception as e:
-        logger.error(f"❌ Erreur lors du remplacement des synonymes : {e}")
-        return text
-
 
 def compute_embedding_similarity_from_vectors(embedding1, embedding2):
     """
@@ -486,16 +446,3 @@ def compute_embedding_similarity_from_vectors(embedding1, embedding2):
         return 0.0
 
 
-def detect_paraphrase(text1, text2):
-    """
-    Vérifie si deux phrases sont des paraphrases.
-    """
-    try:
-        # Chargement du modèle seulement si nécessaire
-        # paraphrase_model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-        embedding1, embedding2 = paraphrase_model.encode([text1, text2])
-        return util.pytorch_cos_sim(embedding1, embedding2).item()
-
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de la détection de paraphrase : {e}")
-        return 0.0

@@ -14,11 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Téléchargement des modèles NLP et ressources NLTK
 RUN python -m spacy download fr_dep_news_trf
-RUN python -c "import nltk; nltk.download('wordnet'); nltk.download('omw-1.4')"
+# RUN python -c "import nltk; nltk.download('wordnet'); nltk.download('omw-1.4')"
 
 # Téléchargement des modèles SentenceTransformer
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+# RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"
+# RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
 
 # Copier tout le reste
 COPY . .

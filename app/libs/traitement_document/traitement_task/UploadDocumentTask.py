@@ -1,6 +1,7 @@
 # app/libs/traitement_list/step_001_upload_document.py
 
 import os
+from datetime import datetime
 
 from ..ClassTraitement import Traitement
 from ....services.document_upload_service import DocumentUploadService
@@ -14,18 +15,28 @@ class UploadDocumentTask(Traitement):
     def prepare(self, data):
         """
         Vérifie l'existence du fichier source, détermine son extension
-        et retourne un dictionnaire contenant le chemin source, l'extension
-        et un flag indiquant si le document nécessite un traitement OCR.
+        et retourne un dictionnaire contenant le chemin source, l'extension,
+        le nom du fichier original, la date d'upload et un flag indiquant 
+        si le document nécessite un traitement OCR.
 
-        :param data: Chemin du fichier source à déposer.
-        :return: dict avec 'source_file', 'extension' et 'requires_ocr'
+        :param data: Dict contenant le chemin du fichier source et les métadonnées
+        :return: dict avec les informations nécessaires pour l'exécution
         :raises FileNotFoundError: Si le fichier n'existe pas.
         """
-        if not os.path.exists(data):
-            raise FileNotFoundError("Le fichier source n'existe pas.")
-        print(f"{self.name} - Fichier source vérifié : {data}")
+        if isinstance(data, dict):
+            source_file = data.get('temp_file_path')
+            filename = data.get('filename', '')
+            upload_date = data.get('upload_date', '')
+        else:
+            source_file = data
+            filename = os.path.basename(data)
+            upload_date = datetime.now().isoformat()
 
-        extension = os.path.splitext(data)[1].lower()
+        if not os.path.exists(source_file):
+            raise FileNotFoundError("Le fichier source n'existe pas.")
+        print(f"{self.name} - Fichier source vérifié : {source_file}")
+
+        extension = os.path.splitext(source_file)[1].lower()
         # Pour notre cas, on considère que les fichiers texte (.txt, .json) n'ont pas besoin d'OCR
         requires_ocr = True
         if extension in [".txt", ".json"]:
@@ -33,9 +44,11 @@ class UploadDocumentTask(Traitement):
 
         # On retourne un dictionnaire préparé pour l'étape d'exécution
         return {
-            "source_file": data,
+            "source_file": source_file,
             "extension": extension,
-            "requires_ocr": requires_ocr
+            "requires_ocr": requires_ocr,
+            "filename": filename,
+            "upload_date": upload_date
         }
 
     def execute(self, prepared_data):
@@ -44,8 +57,8 @@ class UploadDocumentTask(Traitement):
         Retourne un dictionnaire comprenant l'identifiant du document, le chemin déposé,
         l'extension et le flag 'requires_ocr' pour la suite du pipeline.
 
-        :param prepared_data: dict contenant 'source_file', 'extension' et 'requires_ocr'
-        :return: dict avec 'document_id', 'deposited_path', 'extension' et 'requires_ocr'
+        :param prepared_data: dict contenant les informations du document
+        :return: dict avec toutes les informations nécessaires
         """
         source_file = prepared_data["source_file"]
         # Déposer le document et récupérer l'ID
@@ -59,7 +72,9 @@ class UploadDocumentTask(Traitement):
             "document_id": document_id,
             "deposited_path": deposited_path,
             "extension": prepared_data["extension"],
-            "requires_ocr": prepared_data["requires_ocr"]
+            "requires_ocr": prepared_data["requires_ocr"],
+            "filename": prepared_data["filename"],
+            "upload_date": prepared_data["upload_date"]
         }
 
 

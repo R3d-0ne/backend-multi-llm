@@ -5,7 +5,7 @@ import logging
 from fastapi.middleware.cors import CORSMiddleware
 
 # Importation des routes de l'application
-from .routes import contexts, history, generate, settings, messages, discussions, documents
+from .routes import contexts, history, generate, settings, messages, discussions, documents, search
 # Importation du service Qdrant
 from .services.qdrant_service import qdrant_service
 
@@ -36,6 +36,7 @@ app.include_router(generate.router)
 app.include_router(discussions.router)
 app.include_router(messages.router)
 app.include_router(documents.router)
+app.include_router(search.router)
 
 
 # Récupération de l'URL d'Ollama depuis les variables d'environnement (pour un autre service)
@@ -52,14 +53,14 @@ async def read_root():
 
         # Créer ou mettre à jour les collections et récupérer un résumé
         summary = create_or_update_collections([
-            {"name": "contexts", "vector_size": 384},
-            {"name": "discussions", "vector_size": 384},
-            {"name": "history", "vector_size": 384},
+            {"name": "contexts", "vector_size": 768},
+            {"name": "discussions", "vector_size": 768},
+            {"name": "history", "vector_size": 768},
             {"name": "settings", "vector_size": 1},
-            {"name": "messages", "vector_size": 384},
-            {"name": "documents", "vector_size": 384},
+            {"name": "messages", "vector_size": 768},
+            {"name": "documents", "vector_size": 768},
         ])
-
+ 
         return {
             "status": "success",
             "message": f"Collections existantes:",

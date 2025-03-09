@@ -27,3 +27,30 @@ flair
 pyspellchecker
 camelot-py
 python-multipart
+
+# LLM et intégration
+openai>=1.10.0
+langchain>=0.1.0  # Framework pour intégration LLM
+langchain-community>=0.0.10  # Extensions communautaires pour LangChain
+langchain-core>=0.1.17  # Composants de base pour LangChain
+langchainhub>=0.1.14  # Hub de prompts et chaînes pour LangChain
+langchain-text-splitters>=0.0.1  # Découpage de texte optimisé
+sentence-transformers>=2.4.0  # Version plus récente pour embeddings
+
+# Autogen et ses dépendances
+pyautogen>=0.7.6
+diskcache
+docker
+termcolor
+tiktoken
+asyncer==0.0.8
+fast-depends==2.4.12
+ollama>=0.4.7
+fix-busted-json>=0.0.18
+
+# Traitement de données et performance
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.0.0  # Pour les algorithmes d'IA classiques
+cachetools>=5.3.0  # Pour la mise en cache des résultats
+tenacity>=8.2.0  # Pour les retries automatiques des appels d'API

@@ -5,6 +5,8 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from typing import List, Dict, Any, Optional
 from qdrant_client.http.models import Record, QueryResponse
+import inspect
+import json
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -178,18 +180,98 @@ class QdrantService:
                 with_payload=True
             )
 
+            # Afficher la structure de la réponse pour le débogage
+            self._debug_response_structure(response)
+
             # Transformation de la réponse en liste de dictionnaires
             results = []
-            for point in response.result:
-                results.append({
-                    "id": point.id,
-                    "score": point.score if hasattr(point, "score") else None,
-                    "payload": point.payload
-                })
+            
+            # Vérifier la structure de la réponse selon la version de l'API Qdrant
+            if hasattr(response, "result"):
+                # Ancienne structure (attribut result)
+                for point in response.result:
+                    results.append({
+                        "id": point.id,
+                        "score": point.score if hasattr(point, "score") else None,
+                        "payload": point.payload
+                    })
+            elif hasattr(response, "points"):
+                # Nouvelle structure (attribut points)
+                for point in response.points:
+                    results.append({
+                        "id": point.id,
+                        "score": point.score if hasattr(point, "score") else None,
+                        "payload": point.payload
+                    })
+            else:
+                # En dernier recours, si la structure n'est pas reconnue,
+                # essayer d'itérer directement sur la réponse
+                try:
+                    for point in response:
+                        results.append({
+                            "id": getattr(point, "id", None) or point.get("id"),
+                            "score": getattr(point, "score", None) or point.get("score"),
+                            "payload": getattr(point, "payload", None) or point.get("payload", {})
+                        })
+                except Exception as e:
+                    logger.warning(f"Structure de réponse non standard, traitement générique: {e}")
+                    # Si tout échoue, retourner la réponse brute pour le débogage
+                    return {"raw_response": str(response)}
+            
             return results
         except Exception as e:
             logger.error(f"Erreur recherche similaires: {e}")
             raise
+
+    def _debug_response_structure(self, obj, max_depth=2, current_depth=0) -> None:
+        """
+        Affiche la structure d'un objet de réponse pour faciliter le débogage.
+        """
+        if current_depth > max_depth:
+            return
+            
+        if obj is None:
+            logger.info("Objet de réponse: None")
+            return
+            
+        try:
+            # Structure de l'objet
+            logger.info(f"Type d'objet: {type(obj).__name__}")
+            
+            # Attributs
+            attrs = dir(obj)
+            important_attrs = [attr for attr in attrs if not attr.startswith('_') and not callable(getattr(obj, attr))]
+            logger.info(f"Attributs principaux: {', '.join(important_attrs) or 'aucun'}")
+            
+            # Pour les objets itérables
+            if hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, dict)):
+                try:
+                    first_items = list(obj)[:2]  # Prendre uniquement les 2 premiers éléments
+                    if first_items:
+                        logger.info(f"Premier élément de type: {type(first_items[0]).__name__}")
+                        if current_depth < max_depth:
+                            # Analyser récursivement le premier élément
+                            self._debug_response_structure(first_items[0], max_depth, current_depth + 1)
+                except Exception as e:
+                    logger.warning(f"Impossible d'itérer sur l'objet: {e}")
+            
+            # Pour les objets dict-like
+            if hasattr(obj, 'items') or isinstance(obj, dict):
+                try:
+                    keys = list(obj.keys())[:5] if hasattr(obj, 'keys') else []
+                    logger.info(f"Clés principales: {', '.join(str(k) for k in keys) or 'aucune'}")
+                except Exception as e:
+                    logger.warning(f"Impossible d'accéder aux clés: {e}")
+                    
+            # Représentation en JSON si possible
+            try:
+                if hasattr(obj, '__dict__'):
+                    logger.info(f"Aperçu JSON: {json.dumps(obj.__dict__, default=str)[:100]}...")
+            except Exception:
+                pass
+                
+        except Exception as e:
+            logger.warning(f"Erreur lors de l'analyse de la structure: {e}")
 
     def delete_document(
         self,

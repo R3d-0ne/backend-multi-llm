@@ -121,5 +121,7 @@ class OCRTask(Traitement):
             "requires_ocr": result.get("requires_ocr"),
             "extracted_text": result.get("extracted_text"),
             "text_file_path": result.get("text_file_path"),
-            "image_paths": result.get("image_paths", [])
+            "image_paths": result.get("image_paths", []),
+            "filename": result.get("filename"),  # Préserver le nom du fichier
+            "upload_date": result.get("upload_date")  # Préserver la date d'upload
         }

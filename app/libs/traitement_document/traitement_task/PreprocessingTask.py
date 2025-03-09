@@ -3,7 +3,7 @@ from ..ClassTraitement import Traitement
 from ...functions.global_functions import (
     clean_text, tokenize_text, remove_stopwords,
     stem_text, lemmatize_text,
-    replace_synonyms_selective, extract_phone_numbers,
+    extract_phone_numbers,
     extract_emails, extract_money_amounts, extract_dates, extract_percentages, extract_named_entities_spacy,
     extract_named_entities_flair, extract_named_entities_combined, correct_ocr_errors, extract_entities_advanced
 )
@@ -48,7 +48,9 @@ class PreprocessingTask(Traitement):
             "tables_count": data.get("tables_count"),
             "pages_with_tables": data.get("pages_with_tables"),
             "details_tables": data.get("details_tables"),
-            "image_paths": data.get("image_paths", [])
+            "image_paths": data.get("image_paths", []),
+            "filename": data.get("filename"),  # Préserver le nom du fichier
+            "upload_date": data.get("upload_date")  # Préserver la date d'upload
         }
 
 
@@ -127,13 +129,6 @@ class PreprocessingTask(Traitement):
             result["named_entities_combined"] = named_entities_combined
             logger.info("✅ Extraction des entités terminée combinés.")
 
-
-
-            # 7️⃣ Remplacement des synonymes
-            synonym_replaced_text = replace_synonyms_selective(cleaned_text)
-            result["synonym_replaced_text"] = synonym_replaced_text
-            logger.info("✅ Remplacement des synonymes terminé.")
-
             # 8️⃣ Extraction des numéros de téléphone et emails
             result["phone_numbers"] = extract_phone_numbers(cleaned_text)
             result["emails"] = extract_emails(cleaned_text)
@@ -165,7 +160,6 @@ class PreprocessingTask(Traitement):
                 "named_entities_flair": result.get("named_entities_flair"),
                 "named_entities_bert": result.get("named_entities_bert"),
                 "named_entities_combined": result.get("named_entities_combined"),
-                "synonym_replaced_text": result.get("synonym_replaced_text"),
                 "phone_numbers": result.get("phone_numbers"),
                 "emails": result.get("emails"),
                 "money_amounts": result.get("money_amounts"),
@@ -175,7 +169,9 @@ class PreprocessingTask(Traitement):
                 "tables_count": result.get("tables_count"),
                 "pages_with_tables": result.get("pages_with_tables"),
                 "details_tables": result.get("details_tables"),
-                "image_paths": result.get("image_paths", [])
+                "image_paths": result.get("image_paths", []),
+                "filename": result.get("filename"),
+                "upload_date": result.get("upload_date")
             }
 
         except Exception as e:
