@@ -38,7 +38,6 @@ app.include_router(messages.router)
 app.include_router(documents.router)
 app.include_router(search.router)
 
-
 # Récupération de l'URL d'Ollama depuis les variables d'environnement (pour un autre service)
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 
@@ -51,7 +50,7 @@ async def read_root():
         logger.info(f"Connecté à Qdrant")
         logger.info(f"Connecté à Qdrant : {collections_info}")
 
-        # Créer ou mettre à jour les collections et récupérer un résumé
+        # Créer ou mettre à jour les collections (uniquement "documents" en hybride)
         summary = create_or_update_collections([
             {"name": "contexts", "vector_size": 768},
             {"name": "discussions", "vector_size": 768},
@@ -63,7 +62,7 @@ async def read_root():
  
         return {
             "status": "success",
-            "message": f"Collections existantes:",
+            "message": "Collections initialisées avec succès (documents en mode hybride)",
             "collections": summary
         }
     except Exception as e:

@@ -18,8 +18,6 @@ try:
     nlp = spacy.load("fr_dep_news_trf")
     bert_large = "dbmdz/bert-large-cased-finetuned-conll03-english"
 
-    # Chargement des modèles NER
-    nlp_flair = flair.models.SequenceTagger.load("fr-ner")
     
     # Configuration du modèle d'embedding (port 11434 par défaut d'Ollama)
     minilm_model = OllamaModel("nomic-embed-text:latest", port=11434)

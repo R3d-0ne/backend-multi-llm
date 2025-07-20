@@ -19,7 +19,7 @@ class EmbeddingService:
         """
         if isinstance(texts, str):
             texts = [texts]
-
+ 
         if not texts or not isinstance(texts, list):
             return None
 
@@ -36,7 +36,6 @@ class EmbeddingService:
                 )
                 response.raise_for_status()
                 logger.info(f"Réponse reçue : {response.status_code}")
-                logger.info(f"Contenu de la réponse : {response.text}")
                 
                 embedding = response.json().get("embedding", [])
                 if embedding:

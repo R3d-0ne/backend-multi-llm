@@ -2,7 +2,9 @@ from pydantic import BaseModel
 from typing import Optional
 import requests
 import logging
+import os
 from fastapi import HTTPException
+from dotenv import load_dotenv
 
 from .context_service import context_service
 from .discussions_service import discussions_service
@@ -19,6 +21,12 @@ class GenerateRequest(BaseModel):
 
 
 logger = logging.getLogger(__name__)
+
+# Chargement des variables d'environnement
+load_dotenv()
+
+# Configuration du LLM
+LLM_MODEL = os.getenv("LLM_MODEL", "llama3.1:8b")
 
 
 class GenerateService:
@@ -74,7 +82,7 @@ class GenerateService:
             # Envoyer la requête à DeepSeek (Ollama)
             response = requests.post(
                 self.url,
-                json={"model": "deepseek-r1:7b", "prompt": prompt, "stream": False}
+                json={"model": LLM_MODEL, "prompt": prompt, "stream": False}
             )
             if response.status_code != 200:
                 logger.error(f"Erreur API DeepSeek: {response.text}")

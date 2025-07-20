@@ -4,8 +4,7 @@ from ...functions.global_functions import (
     clean_text, tokenize_text, remove_stopwords,
     stem_text, lemmatize_text,
     extract_phone_numbers,
-    extract_emails, extract_money_amounts, extract_dates, extract_percentages, extract_named_entities_spacy,
-    extract_named_entities_flair, extract_named_entities_combined, correct_ocr_errors, extract_entities_advanced
+    extract_emails, extract_money_amounts, extract_dates, extract_percentages, extract_entities_advanced
 )
 
 logger = logging.getLogger(__name__)
@@ -84,10 +83,6 @@ class PreprocessingTask(Traitement):
             result["cleaned_text"] = cleaned_text
             logger.info("✅ Texte nettoyé.")
 
-            # 1️⃣.1️⃣ Nettoyage du texte
-            cleaned_text = correct_ocr_errors(text)
-            result["cleaned_text_correct_ocr_errors"] = cleaned_text
-            logger.info("✅ Texte corrigé orthographe.")
 
             # 2️⃣ Tokenisation
             tokens = tokenize_text(cleaned_text)
@@ -109,25 +104,12 @@ class PreprocessingTask(Traitement):
             result["lemmatized_tokens"] = lemmatized_tokens
             logger.info("✅ Lemmatisation effectuée.")
 
-            # 6️⃣ Extraction des entités nommées (NER)
-            named_entities_spacy = extract_named_entities_spacy(cleaned_text)
-            result["named_entities_spacy"] = named_entities_spacy
-            logger.info("✅ Extraction des entités terminée spacy.")
-
-            # 6️⃣.1️⃣ Extraction des entités nommées (NER)
-            named_entities_flair = extract_named_entities_flair(cleaned_text)
-            result["named_entities_flair"] = named_entities_flair
-            logger.info("✅ Extraction des entités terminée flair.")
 
             # 6️⃣.1️⃣ Extraction des entités nommées (NER)
             named_entities_bert = extract_entities_advanced(cleaned_text)
             result["named_entities_bert"] = named_entities_bert
             logger.info("✅ Extraction des entités terminée bert.")
 
-            # 6️⃣.1️⃣ Extraction des entités nommées (NER) combinés
-            named_entities_combined = extract_named_entities_combined(cleaned_text)
-            result["named_entities_combined"] = named_entities_combined
-            logger.info("✅ Extraction des entités terminée combinés.")
 
             # 8️⃣ Extraction des numéros de téléphone et emails
             result["phone_numbers"] = extract_phone_numbers(cleaned_text)
@@ -151,15 +133,11 @@ class PreprocessingTask(Traitement):
                 "original_text": result.get("original_text"),
                 "text_file_path": result.get("text_file_path"),
                 "cleaned_text": result.get("cleaned_text"),
-                "cleaned_text_correct_ocr_errors": result.get("cleaned_text_correct_ocr_errors"),
                 "tokens": result.get("tokens"),
                 "tokens_no_stopwords": result.get("tokens_no_stopwords"),
                 "stemmed_tokens": result.get("stemmed_tokens"),
                 "lemmatized_tokens": result.get("lemmatized_tokens"),
-                "named_entities_spacy": result.get("named_entities_spacy"),
-                "named_entities_flair": result.get("named_entities_flair"),
                 "named_entities_bert": result.get("named_entities_bert"),
-                "named_entities_combined": result.get("named_entities_combined"),
                 "phone_numbers": result.get("phone_numbers"),
                 "emails": result.get("emails"),
                 "money_amounts": result.get("money_amounts"),

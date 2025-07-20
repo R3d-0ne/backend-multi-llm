@@ -21,9 +21,6 @@ class EmbeddingTask(Traitement):
         - 'tokens_no_stopwords': tokens sans stopwords
         - 'stemmed_tokens': tokens stemmatisés
         - 'lemmatized_tokens': tokens lemmatisés
-        - 'named_entities_spacy': entités nommées extraites par spaCy
-        - 'named_entities_flair': entités nommées extraites par Flair
-        - 'named_entities_combined': entités nommées combinées
         """
         if not isinstance(data, dict):
             raise ValueError("EmbeddingTask attend un dictionnaire en entrée.")
@@ -31,7 +28,6 @@ class EmbeddingTask(Traitement):
         required_fields = [
             'document_id', 'cleaned_text', 'tokens',
             'tokens_no_stopwords', 'stemmed_tokens', 'lemmatized_tokens',
-            'named_entities_spacy', 'named_entities_flair', 'named_entities_combined'
         ]
         for field in required_fields:
             if field not in data:
@@ -55,10 +51,18 @@ class EmbeddingTask(Traitement):
                 'tokens_no_stopwords': embedding_service.get_embedding(' '.join(prepared_data['tokens_no_stopwords'])),
                 'stemmed_tokens': embedding_service.get_embedding(' '.join(prepared_data['stemmed_tokens'])),
                 'lemmatized_tokens': embedding_service.get_embedding(' '.join(prepared_data['lemmatized_tokens'])),
-                'named_entities_spacy': embedding_service.get_embedding(' '.join([str(ent) for ent in prepared_data['named_entities_spacy']])),
-                'named_entities_flair': embedding_service.get_embedding(' '.join([str(ent) for ent in prepared_data['named_entities_flair']])),
-                'named_entities_combined': embedding_service.get_embedding(' '.join([str(ent) for ent in prepared_data['named_entities_combined']]))
             }
+            
+            # Ajout des embeddings pour les entités LLM si disponibles
+            if 'llm_entities' in prepared_data and prepared_data['llm_entities']:
+                llm_entities_text = ' '.join([ent['text'] for ent in prepared_data['llm_entities']])
+                embeddings['llm_entities'] = embedding_service.get_embedding(llm_entities_text)
+                logger.info(f"{self.name} - Embedding généré pour les entités LLM")
+            
+            if 'llm_keywords' in prepared_data and prepared_data['llm_keywords']:
+                llm_keywords_text = ' '.join(prepared_data['llm_keywords'])
+                embeddings['llm_keywords'] = embedding_service.get_embedding(llm_keywords_text)
+                logger.info(f"{self.name} - Embedding généré pour les mots-clés LLM")
             
             # Ajout des embeddings au résultat
             result['embeddings'] = embeddings

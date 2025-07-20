@@ -1,11 +1,18 @@
 import os
 import autogen
 from autogen.coding import LocalCommandLineCodeExecutor
+from dotenv import load_dotenv
+
+# Chargement des variables d'environnement
+load_dotenv()
+
+# Configuration du LLM
+LLM_MODEL = os.getenv("LLM_MODEL", "llama3.1:8b")
 
 # Configuration Ollama
 config_list = [
     {
-        "model": "llama3.1:8b",
+        "model": LLM_MODEL,
         "base_url": "http://host.docker.internal:11434",
         "api_type": "ollama"
     }

@@ -8,8 +8,11 @@ from sklearn.metrics.pairwise import cosine_similarity
 from transformers import pipeline
 import base64
 from nltk.stem.snowball import FrenchStemmer
+import hashlib
+from collections import Counter
+import math
 
-from ...services.model_loader import nlp, nlp_flair, bert_large
+from ...services.model_loader import nlp, bert_large
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -135,64 +138,6 @@ def lemmatize_text(tokens):
     except Exception as e:
         logger.error(f"❌ Erreur lors de la lemmatisation : {e}")
         return tokens
-
-
-def extract_named_entities_spacy(text):
-    """
-    Extrait les entités nommées en utilisant SpaCy.
-    """
-    try:
-        doc = nlp(text)
-        entities = {"PER": set(), "LOC": set(), "ORG": set(), "MISC": set()}
-
-        for ent in doc.ents:
-            if ent.label_ in entities:
-                entities[ent.label_].add(ent.text)
-            else:
-                entities["MISC"].add(ent.text)
-
-        return {key: list(values) for key, values in entities.items()}
-    except Exception as e:
-        logger.error(f"❌ Erreur avec SpaCy : {e}")
-        return {}
-
-
-def extract_named_entities_flair(text):
-    """
-    Extrait les entités nommées en utilisant Flair.
-    """
-    try:
-        sentence = flair.data.Sentence(text)
-        nlp_flair.predict(sentence)
-        entities = {"PER": set(), "LOC": set(), "ORG": set(), "MISC": set()}
-
-        for entity in sentence.get_spans("ner"):
-            label = entity.get_label("ner").value
-            if label in entities:
-                entities[label].add(entity.text)
-            else:
-                entities["MISC"].add(entity.text)
-
-        return {key: list(values) for key, values in entities.items()}
-    except Exception as e:
-        logger.error(f"❌ Erreur avec Flair : {e}")
-        return {}
-
-
-def extract_named_entities_combined(text):
-    """
-    Combine les résultats de SpaCy et Flair pour améliorer la précision de l'extraction des entités.
-    """
-    try:
-        entities_spacy = extract_named_entities_spacy(text)
-        entities_flair = extract_named_entities_flair(text)
-
-        combined_entities = {key: set(entities_spacy.get(key, []) + entities_flair.get(key, [])) for key in
-                             set(entities_spacy) | set(entities_flair)}
-        return {key: list(values) for key, values in combined_entities.items()}
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de la combinaison des entités : {e}")
-        return {}
 
 
 def encode_image_to_base64(image_path: str) -> str:
@@ -399,37 +344,7 @@ def extract_entities_advanced(
 
     return result
 
-def correct_ocr_errors(text):
-    """
-    Applique des techniques avancées de correction des erreurs OCR basées sur le contexte linguistique et l'orthographe.
-    """
-    try:
-        # Vérifier si le texte est None ou vide
-        if text is None or not str(text).strip():
-            logger.warning("Le texte fourni est None ou vide, renvoi d'une chaîne vide.")
-            return ""
 
-        # S'assurer que text est de type str
-        text = str(text)
-
-        # Suppression des artefacts fréquents : remplacements basés sur des patterns
-        text = re.sub(r'(?<!\d)1(?!\d)', 'l', text)  # remplace '1' isolé par 'l'
-        text = re.sub(r'(?<!\d)0(?!\d)', 'o', text)  # remplace '0' isolé par 'o'
-        text = re.sub(r'(?<!\d)5(?!\d)', 's', text)  # remplace '5' isolé par 's'
-        text = re.sub(r'(?<!\w)rn(?!\w)', 'm', text)  # remplace 'rn' par 'm'
-        text = re.sub(r'(?<!\d)\-(?!\d)', ' ', text)  # remplace tirets non numériques par espace
-
-        # Nettoyage : suppression d'espaces multiples
-        text = re.sub(r'\s+', ' ', text).strip()
-
-        # Correction contextuelle supplémentaire : par exemple, transformer "l" en "1" si nécessaire
-        corrected_text = re.sub(r'(?<=\w)l(?=\d)', '1', text)
-
-        return corrected_text
-
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de la correction OCR : {e}")
-        return text
 
 def compute_embedding_similarity_from_vectors(embedding1, embedding2):
     """
@@ -444,5 +359,109 @@ def compute_embedding_similarity_from_vectors(embedding1, embedding2):
     except Exception as e:
         logger.error(f"❌ Erreur lors du calcul de similarité cosinus : {e}")
         return 0.0
+
+def create_sparse_vector(tokens, vocab_size=10000):
+    """
+    Crée un vecteur épars à partir d'une liste de tokens.
+    Utilise une technique de hachage pour associer chaque token à un index.
+    
+    Args:
+        tokens: Liste de tokens
+        vocab_size: Taille du vocabulaire (dimensionnalité du vecteur épars)
+        
+    Returns:
+        Un vecteur épars encodant les tokens
+    """
+    if not tokens:
+        return [0.0] * vocab_size
+        
+    # Initialiser un vecteur de zéros
+    vector = [0.0] * vocab_size
+    
+    # Compter les occurrences de chaque token
+    token_counts = Counter(tokens)
+    
+    for token, count in token_counts.items():
+        # Utiliser un hash pour obtenir un index stable pour chaque token
+        hash_obj = hashlib.md5(token.encode('utf-8'))
+        index = int(hash_obj.hexdigest(), 16) % vocab_size
+        
+        # Incrémenter la valeur à cet index (comptage simple)
+        vector[index] = float(count)
+    
+    return vector
+
+def create_bm25_sparse_vector(tokens, doc_tokens_list, vocab_size=10000, k1=1.5, b=0.75):
+    """
+    Crée un vecteur épars utilisant une formule similaire à BM25.
+    
+    Args:
+        tokens: Liste de tokens du document ou de la requête
+        doc_tokens_list: Liste de tokens de tous les documents (pour IDF)
+        vocab_size: Taille du vocabulaire
+        k1, b: Paramètres de BM25
+        
+    Returns:
+        Un vecteur épars pondéré avec BM25
+    """
+    if not tokens or not doc_tokens_list:
+        return [0.0] * vocab_size
+    
+    # Calculer la longueur moyenne des documents
+    avg_doc_length = sum(len(doc) for doc in doc_tokens_list) / len(doc_tokens_list)
+    
+    # Calculer le nombre de documents contenant chaque terme
+    doc_freqs = {}
+    for doc_tokens in doc_tokens_list:
+        for token in set(doc_tokens):  # Utiliser set pour compter une seule fois par document
+            hash_obj = hashlib.md5(token.encode('utf-8'))
+            index = int(hash_obj.hexdigest(), 16) % vocab_size
+            doc_freqs[index] = doc_freqs.get(index, 0) + 1
+    
+    # Nombre total de documents
+    N = len(doc_tokens_list)
+    
+    # Initialiser le vecteur
+    vector = [0.0] * vocab_size
+    
+    # Compter les occurrences de chaque token
+    token_counts = Counter(tokens)
+    doc_length = len(tokens)
+    
+    for token, term_freq in token_counts.items():
+        # Calculer l'index du token
+        hash_obj = hashlib.md5(token.encode('utf-8'))
+        index = int(hash_obj.hexdigest(), 16) % vocab_size
+        
+        # Récupérer le nombre de documents contenant ce terme
+        doc_freq = doc_freqs.get(index, 0)
+        if doc_freq == 0:
+            continue  # Éviter la division par zéro
+        
+        # Calculer IDF
+        idf = math.log((N - doc_freq + 0.5) / (doc_freq + 0.5) + 1.0)
+        
+        # Calculer le score BM25
+        term_score = (term_freq * (k1 + 1)) / (term_freq + k1 * (1 - b + b * doc_length / avg_doc_length))
+        
+        # Pondérer avec IDF
+        vector[index] = float(term_score * idf)
+    
+    return vector
+
+def tokenize_and_create_sparse_vector(text, vocab_size=10000):
+    """
+    Tokenize le texte et crée un vecteur épars.
+    
+    Args:
+        text: Texte à tokenizer
+        vocab_size: Taille du vocabulaire
+        
+    Returns:
+        Un vecteur épars
+    """
+    tokens = tokenize_text(text)
+    tokens_no_stopwords = remove_stopwords(tokens)
+    return create_sparse_vector(tokens_no_stopwords, vocab_size)
 
 

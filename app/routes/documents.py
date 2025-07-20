@@ -13,11 +13,15 @@ document_service = DocumentService()
 
 
 @router.post("/documents/", status_code=201)
-async def create_document(file: UploadFile = File(...)):
+async def create_document(
+    file: UploadFile = File(...),
+    use_llm_enrichment: bool = Body(True, description="Activer l'enrichissement par LLM")
+):
     """
     Upload un document et lance le pipeline de traitement.
     
     :param file: Le fichier à uploader
+    :param use_llm_enrichment: Activer l'enrichissement par LLM (extraction d'entités, concepts, résumé)
     :return: Un dictionnaire avec l'ID du document et le résultat du pipeline de traitement
     """
     try:
@@ -39,7 +43,7 @@ async def create_document(file: UploadFile = File(...)):
         }
 
         # Lancer le pipeline de traitement via l'orchestrateur
-        orchestrator = TraitementOrchestrator()
+        orchestrator = TraitementOrchestrator(use_llm_enrichment=use_llm_enrichment)
         result = orchestrator.run_pipeline(initial_data)
 
         # Nettoyer le fichier temporaire
@@ -47,7 +51,7 @@ async def create_document(file: UploadFile = File(...)):
 
         return {
             "success": True,
-            "message": "Document uploadé et traitement lancé avec succès",
+            "message": f"Document uploadé et traitement lancé avec succès (LLM enrichment: {'activé' if use_llm_enrichment else 'désactivé'})",
             "document_id": result.get("document_id"),
             "result": result
         }

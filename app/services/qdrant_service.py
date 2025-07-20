@@ -3,10 +3,11 @@ import logging
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from qdrant_client.http.models import Record, QueryResponse
 import inspect
 import json
+from qdrant_client.models import NamedVector
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -163,6 +164,10 @@ class QdrantService:
     ) -> List[Dict[str, Any]]:
         """
         Recherche des documents similaires à partir d'un vecteur de requête.
+        Supporte à la fois les collections standard et hybrides.
+        
+        Pour les collections hybrides, utilise le vecteur 'dense' par défaut.
+        
         Retourne une liste de dictionnaires contenant l'ID, le score et le payload de chaque résultat.
         """
         try:
@@ -172,56 +177,69 @@ class QdrantService:
             if isinstance(query_vector, list) and query_vector and isinstance(query_vector[0], list):
                 query_vector = query_vector[0]
             query_vector = [float(x) for x in query_vector]
-
-            response = self.client.query_points(
-                collection_name=collection_name,
-                query=query_vector,
-                limit=limit,
-                with_payload=True
-            )
-
-            # Afficher la structure de la réponse pour le débogage
-            self._debug_response_structure(response)
-
-            # Transformation de la réponse en liste de dictionnaires
-            results = []
             
-            # Vérifier la structure de la réponse selon la version de l'API Qdrant
-            if hasattr(response, "result"):
-                # Ancienne structure (attribut result)
-                for point in response.result:
-                    results.append({
-                        "id": point.id,
-                        "score": point.score if hasattr(point, "score") else None,
-                        "payload": point.payload
-                    })
-            elif hasattr(response, "points"):
-                # Nouvelle structure (attribut points)
-                for point in response.points:
-                    results.append({
-                        "id": point.id,
-                        "score": point.score if hasattr(point, "score") else None,
-                        "payload": point.payload
-                    })
+            # Vérifier si la collection est hybride
+            # Pour cela, nous essayons d'abord une recherche simple
+            # Si ça échoue avec l'erreur "Collection requires specified vector name", alors c'est hybride
+            is_hybrid = False
+            try:
+                # Essayer une recherche directe
+                logger.info(f"Test de recherche simple sur {collection_name} (détection de type de collection)")
+                self.client.search(
+                    collection_name=collection_name,
+                    query_vector=query_vector,
+                    limit=1
+                )
+                logger.info(f"Collection {collection_name} détectée comme standard")
+            except Exception as e:
+                error_message = str(e).lower()
+                if "vector name" in error_message and "dense" in error_message:
+                    is_hybrid = True
+                    logger.info(f"Collection {collection_name} détectée comme hybride (contient les vecteurs nommés)")
+                else:
+                    logger.warning(f"Erreur lors du test de la collection: {e}")
+            
+            # Effectuer la recherche appropriée selon le type de collection
+            if is_hybrid:
+                logger.info(f"Utilisation de la recherche hybride (vecteur 'dense') pour {collection_name}")
+                # Créer un NamedVector correctement formaté pour les collections hybrides
+                
+                named_vector = NamedVector(
+                    name="dense",
+                    vector=query_vector
+                )
+                
+                search_result = self.client.search(
+                    collection_name=collection_name,
+                    query_vector=named_vector,
+                    limit=limit
+                )
             else:
-                # En dernier recours, si la structure n'est pas reconnue,
-                # essayer d'itérer directement sur la réponse
-                try:
-                    for point in response:
-                        results.append({
-                            "id": getattr(point, "id", None) or point.get("id"),
-                            "score": getattr(point, "score", None) or point.get("score"),
-                            "payload": getattr(point, "payload", None) or point.get("payload", {})
-                        })
-                except Exception as e:
-                    logger.warning(f"Structure de réponse non standard, traitement générique: {e}")
-                    # Si tout échoue, retourner la réponse brute pour le débogage
-                    return {"raw_response": str(response)}
+                # Collection standard, utiliser la recherche simple
+                search_result = self.client.search(
+                    collection_name=collection_name,
+                    query_vector=query_vector,
+                    limit=limit
+                )
             
-            return results
+            # Transformation des résultats
+            formatted_results = []
+            for res in search_result:
+                result = {
+                    "id": res.id,
+                    "score": res.score,
+                    **res.payload
+                }
+                formatted_results.append(result)
+            
+            return formatted_results
+            
         except Exception as e:
             logger.error(f"Erreur recherche similaires: {e}")
-            raise
+            # Débogage amélioré
+            if hasattr(e, "__dict__"):
+                logger.debug(f"Détails de l'erreur: {e.__dict__}")
+            return []
 
     def _debug_response_structure(self, obj, max_depth=2, current_depth=0) -> None:
         """
@@ -310,6 +328,268 @@ class QdrantService:
         except Exception as e:
             logger.error(f"Échec mise à jour métadonnées {document_id}: {e}")
             raise
+
+    def create_hybrid_collection(
+        self,
+        collection_name: str,
+        dense_vector_size: int = 768,
+        entity_vector_size: int = 768,
+        sparse_vector_size: int = 10000,
+        distance: str = "Cosine"
+    ) -> None:
+        """
+        Crée une collection hybride avec plusieurs espaces vectoriels : dense, entités et épars.
+        
+        Args:
+            collection_name: Nom de la collection
+            dense_vector_size: Taille du vecteur dense principal
+            entity_vector_size: Taille du vecteur des entités
+            sparse_vector_size: Taille du vecteur épars (tokens)
+            distance: Métrique de distance (Cosine, Dot, Euclid)
+        """
+        try:
+            # Suppression de la collection existante (si présente)
+            if self.collection_exists(collection_name):
+                logger.warning(f"Suppression collection hybride existante: {collection_name}")
+                self.client.delete_collection(collection_name)
+
+            # Conversion de la distance en énumération
+            distance_enum = models.Distance[distance.upper()]
+            
+            # Définition des configurations de vecteurs
+            vectors_config = {
+                "dense": models.VectorParams(
+                    size=dense_vector_size,
+                    distance=distance_enum
+                ),
+                "entity": models.VectorParams(
+                    size=entity_vector_size,
+                    distance=distance_enum
+                ),
+                "sparse": models.VectorParams(
+                    size=sparse_vector_size,
+                    distance=models.Distance.DOT  # Dot product pour vecteurs épars
+                )
+            }
+
+            # Création de la collection avec les configurations multiples
+            self.client.create_collection(
+                collection_name=collection_name,
+                vectors_config=vectors_config
+            )
+            logger.info(f"Collection hybride créée: {collection_name}")
+        except KeyError:
+            error_msg = f"Distance invalide: {distance}. Options: COSINE, EUCLID, DOT"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        except Exception as e:
+            logger.error(f"Échec création collection hybride: {e}")
+            raise RuntimeError(f"Échec création collection hybride: {e}")
+
+    def upsert_hybrid_document(
+        self,
+        collection_name: str,
+        document_id: str,
+        vectors: Dict[str, List[float]],
+        payload: Dict[str, Any]
+    ) -> None:
+        """
+        Insère ou met à jour un document dans une collection hybride avec plusieurs vecteurs.
+        
+        Args:
+            collection_name: Nom de la collection
+            document_id: ID du document
+            vectors: Dictionnaire des vecteurs (ex: {"dense": [...], "entity": [...], "sparse": [...]})
+            payload: Métadonnées du document
+        """
+        try:
+            # Conversion et normalisation des vecteurs
+            normalized_vectors = {}
+            for vec_name, vector in vectors.items():
+                # Conversion du vecteur s'il s'agit par exemple d'un numpy.ndarray
+                if hasattr(vector, "tolist"):
+                    vector = vector.tolist()
+                # Si le vecteur est une liste de listes, on sélectionne la première
+                if isinstance(vector, list) and vector and isinstance(vector[0], list):
+                    vector = vector[0]
+                # Conversion explicite en float
+                normalized_vectors[vec_name] = [float(x) for x in vector]
+
+            point = models.PointStruct(
+                id=document_id,
+                vector=normalized_vectors,
+                payload=payload
+            )
+
+            self.client.upsert(
+                collection_name=collection_name,
+                wait=True,
+                points=[point]
+            )
+            logger.info(f"Document hybride upserté: {document_id}")
+        except Exception as e:
+            logger.error(f"Échec upsert document hybride {document_id}: {e}")
+            raise
+
+    def hybrid_search(
+        self,
+        collection_name: str,
+        vectors: Dict[str, Union[List[float], Dict[str, Any]]],
+        limit: int = 10,
+        filter_conditions: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Effectue une recherche hybride en utilisant plusieurs vecteurs avec pondération.
+        
+        Args:
+            collection_name: Nom de la collection
+            vectors: Dictionnaire des vecteurs de requête, avec poids optionnels
+                    Format: {"dense": vector_list} ou 
+                            {"dense": {"vector": vector_list, "weight": 0.7}}
+            limit: Nombre maximum de résultats
+            filter_conditions: Conditions de filtrage (optionnel)
+            
+        Returns:
+            Liste des résultats de recherche (points)
+        """
+        try:
+            from qdrant_client.models import NamedVector
+
+            # Normalisation des vecteurs et préparation des NamedVectors
+            named_vectors = []
+            weights = {}
+            
+            for vec_name, value in vectors.items():
+                # Extraction et normalisation du vecteur
+                if isinstance(value, dict) and "vector" in value:
+                    # Format avec poids
+                    vector = value["vector"]
+                    weight = value.get("weight", 1.0)
+                else:
+                    # Format simple (vecteur seul)
+                    vector = value
+                    weight = 1.0
+                
+                # Normalisation du vecteur
+                if hasattr(vector, "tolist"):
+                    vector = vector.tolist()
+                if isinstance(vector, list) and vector and isinstance(vector[0], list):
+                    vector = vector[0]
+                vector = [float(x) for x in vector]
+                
+                # Création du NamedVector
+                named_vector = NamedVector(
+                    name=vec_name,
+                    vector=vector
+                )
+                
+                named_vectors.append(named_vector)
+                weights[vec_name] = weight
+            
+            # Création du filtre si nécessaire
+            search_filter = None
+            if filter_conditions:
+                search_filter = self._build_filter(filter_conditions)
+            
+            # Cas simple: un seul vecteur sans poids particulier
+            if len(named_vectors) == 1 and weights[named_vectors[0].name] == 1.0:
+                logger.info(f"Recherche simple avec vecteur nommé '{named_vectors[0].name}' sur {collection_name}")
+                response = self.client.search(
+                    collection_name=collection_name,
+                    query_vector=named_vectors[0],
+                    limit=limit,
+                    query_filter=search_filter,
+                    with_payload=True
+                )
+            else:
+                # Approche 1: Trouver le vecteur principal (généralement 'dense') et l'utiliser seul
+                # Cette approche est la plus simple et fonctionne bien dans la plupart des cas
+                main_vector_name = "dense" if "dense" in weights else list(weights.keys())[0]
+                main_vector_weight = weights[main_vector_name]
+                main_vector = next((v for v in named_vectors if v.name == main_vector_name), named_vectors[0])
+                
+                logger.info(f"Recherche hybride simplifiée: utilisation du vecteur principal '{main_vector_name}' (poids {main_vector_weight:.1f})")
+                
+                response = self.client.search(
+                    collection_name=collection_name,
+                    query_vector=main_vector,
+                    limit=limit,
+                    query_filter=search_filter,
+                    with_payload=True
+                )
+                
+                # Ajouter un log pour mentionner les autres vecteurs qui n'ont pas été utilisés
+                if len(named_vectors) > 1:
+                    other_vectors = [v.name for v in named_vectors if v.name != main_vector_name]
+                    logger.info(f"Note: les vecteurs secondaires {other_vectors} n'ont pas été utilisés dans cette recherche")
+            
+            # Transformation de la réponse
+            results = []
+            for point in response:
+                results.append({
+                    "id": point.id,
+                    "score": point.score,
+                    **point.payload
+                })
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la recherche hybride: {e}")
+            # Débogage amélioré
+            if hasattr(e, "__dict__"):
+                logger.debug(f"Détails de l'erreur: {e.__dict__}")
+            return []
+
+    def _build_filter(self, conditions: Dict[str, Any]) -> models.Filter:
+        """
+        Construit un filtre Qdrant à partir d'un dictionnaire de conditions.
+        
+        Args:
+            conditions: Dictionnaire de conditions de filtrage
+            
+        Returns:
+            Filtre Qdrant
+        """
+        must_conditions = []
+        
+        for key, value in conditions.items():
+            if key == "upload_date_range" and isinstance(value, dict):
+                if "start" in value:
+                    must_conditions.append(
+                        models.FieldCondition(
+                            key="upload_date",
+                            range=models.Range(
+                                gte=value["start"]
+                            )
+                        )
+                    )
+                if "end" in value:
+                    must_conditions.append(
+                        models.FieldCondition(
+                            key="upload_date",
+                            range=models.Range(
+                                lte=value["end"]
+                            )
+                        )
+                    )
+            elif key.startswith("has_") and isinstance(value, bool) and value:
+                list_name = key[4:]  # Retirer le préfixe "has_"
+                must_conditions.append(
+                    models.FieldCondition(
+                        key=list_name,
+                        match=models.MatchAny(any=True)
+                    )
+                )
+            elif isinstance(value, (str, int, float, bool)):
+                must_conditions.append(
+                    models.FieldCondition(
+                        key=key,
+                        match=models.MatchValue(value=value)
+                    )
+                )
+        
+        return models.Filter(must=must_conditions) if must_conditions else None
 
 
 # Instance singleton du service
