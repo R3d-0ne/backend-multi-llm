@@ -10,14 +10,16 @@ from .context_service import context_service
 from .discussions_service import discussions_service
 from .message_service import message_service
 from .settings_service import settings_service
+from .llm_service import llm_service  # Importation du service LLM
 from ..models.message import Message
 
 
 class GenerateRequest(BaseModel):
     discussion_id: Optional[str] = None  # Optionnel : si non fourni, une discussion sera créée
-    settings_id: Optional[str] = None      # Le setting_id à utiliser, s'il y en a plusieurs
+    settings_id: Optional[str] = None  # Le setting_id à utiliser, s'il y en a plusieurs
     current_message: str
     additional_info: Optional[str] = None
+    model_id: Optional[str] = None  # Ajout du paramètre pour sélectionner le modèle
 
 
 logger = logging.getLogger(__name__)
@@ -25,27 +27,28 @@ logger = logging.getLogger(__name__)
 # Chargement des variables d'environnement
 load_dotenv()
 
-# Configuration du LLM
-LLM_MODEL = os.getenv("LLM_MODEL", "llama3.1:8b")
+# Configuration du LLM par défaut (sera remplacé par le service LLM)
+DEFAULT_LLM_MODEL = os.getenv("LLM_MODEL", "llama3.1:8b")
 
 
 class GenerateService:
     def __init__(self):
-        # URL de l'API DeepSeek (Ollama) en local
-        self.url = "http://host.docker.internal:11434/api/generate"
+        pass  # Plus besoin d'initialiser l'URL ici car on utilise llm_service
 
     def generate_response(
             self,
             discussion_id: Optional[str],
             settings_id: Optional[str],
             current_message: str,
-            additional_info: Optional[str] = None
+            additional_info: Optional[str] = None,
+            model_id: Optional[str] = None  # Nouveau paramètre pour le modèle
     ) -> dict:
         """
         Orchestre la génération d'une réponse.
         Si aucun discussion_id n'est fourni, il crée une nouvelle discussion.
         Utilise le settings_id si fourni pour récupérer les paramètres spécifiques.
-        Ensuite, il construit le prompt via le service de contexte et envoie ce prompt à DeepSeek.
+        Utilise le model_id si fourni pour sélectionner le modèle LLM.
+        Ensuite, il construit le prompt via le service de contexte et envoie ce prompt au LLM.
         """
         try:
             # Si discussion_id n'est pas fourni, créer une nouvelle discussion via le service de discussions.
@@ -63,15 +66,28 @@ class GenerateService:
             else:
                 settings_data = settings_service.get_settings()
 
+            # Extraire les paramètres du modèle depuis les settings s'ils existent
+            temperature = 0.1  # Valeur par défaut
+            max_tokens = 1024  # Valeur par défaut
+            system_prompt = None  # Valeur par défaut
+
+            # Récupérer les paramètres depuis settings_data si disponibles
+            if settings_data and "payload" in settings_data:
+                payload = settings_data.get("payload", {})
+                if isinstance(payload, dict):
+                    temperature = payload.get("temperature", temperature)
+                    max_tokens = payload.get("max_tokens", max_tokens)
+                    system_prompt = payload.get("system_prompt", system_prompt)
+
             # Appel du service de contexte pour construire et enregistrer le prompt final.
-            # On passe les settings récupérés dans ce cas.
             context_result = context_service.save_full_context(
                 discussion_id=discussion_id,
                 current_message=current_message,
                 additional_info=additional_info,
-                settings_id=settings_id  # Corrected parameter name
+                settings_id=settings_id
             )
             context_id = context_result.get("id")
+
             # Récupérer le prompt stocké via le service de contexte.
             prompt_data = context_service.get_context(context_id)
             if not prompt_data or "prompt" not in prompt_data:
@@ -79,16 +95,16 @@ class GenerateService:
             prompt = prompt_data["prompt"]
             logger.info(f"Prompt final construit :\n{prompt}")
 
-            # Envoyer la requête à DeepSeek (Ollama)
-            response = requests.post(
-                self.url,
-                json={"model": LLM_MODEL, "prompt": prompt, "stream": False}
+            # Utiliser le service LLM pour générer une réponse
+            # en lui passant le modèle spécifié si fourni
+            answer = llm_service.generate_response(
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                system_prompt=system_prompt,
+                model_override=model_id
             )
-            if response.status_code != 200:
-                logger.error(f"Erreur API DeepSeek: {response.text}")
-                return {"error": f"Erreur avec DeepSeek: {response.text}"}
-            data = response.json()
-            answer = data.get("response", "")
+
             # Enregistrer le message de l'utilisateur
             user_message = Message(
                 discussion_id=discussion_id,
@@ -104,6 +120,7 @@ class GenerateService:
                 text=answer
             )
             message_service.send_message(assistant_message)
+
             return {"response": answer, "context_id": context_id, "discussion_id": discussion_id}
         except Exception as e:
             logger.error(f"Erreur lors de la génération de la réponse: {e}")
