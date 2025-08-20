@@ -41,6 +41,26 @@ app.include_router(search.router)
 # Récupération de l'URL d'Ollama depuis les variables d'environnement (pour un autre service)
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 
+# Route pour obtenir la version de l'application (utile pour le CI/CD)
+@app.get("/version")
+async def get_version():
+    """Retourne la version de l'application basée sur le commit ID ou une version par défaut."""
+    commit_id = os.getenv("COMMIT_ID", "dev")
+    return {
+        "version": commit_id,
+        "status": "healthy"
+    }
+
+# Route de santé pour le CI/CD
+@app.get("/health")
+async def health_check():
+    """Point de terminaison de vérification de santé pour le CI/CD."""
+    return {
+        "status": "healthy",
+        "service": "backend-multi-llm",
+        "timestamp": "2024-08-20T09:49:00Z"
+    }
+
 # Route de test pour vérifier la connexion à Qdrant
 @app.get("/")
 async def read_root():
