@@ -1,0 +1,122 @@
+name: CI/CD FastAPI + Docker + GHCR
+
+on:
+  push:
+    branches: [ master ]  # Déclenchement à chaque push sur master
+  workflow_dispatch:      # Déclenchement manuel
+
+jobs:
+  # Étape 1 : Génération de la version + nom de l'image Docker
+  versioning:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.versioning.outputs.version }}
+      imageName: ${{ steps.versioning.outputs.imageName }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute version and image name
+        id: versioning
+        run: |
+          version=$(git rev-parse --short HEAD)  # Récupère le commit ID court
+          echo "COMMIT_ID=$version" >> $GITHUB_ENV  # Injecte COMMIT_ID pour endpoint /version
+          repo_name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          imageName=ghcr.io/$repo_name:$version
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "imageName=$imageName" >> $GITHUB_OUTPUT
+          echo "## 🔖 Version: $version" >> $GITHUB_STEP_SUMMARY
+          echo "## 📦 Image: $imageName" >> $GITHUB_STEP_SUMMARY
+
+  # Étape 2 : Exécution des tests unitaires
+  unit-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run unit tests
+        run: |
+          echo "## 🧪 Running unit tests with pytest" >> $GITHUB_STEP_SUMMARY
+          PYTHONPATH=. pytest tests/ --maxfail=1 --disable-warnings --tb=short
+
+  # Étape 3 : Build de l'image Docker et push vers GHCR
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: [ unit-tests, versioning ]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ needs.versioning.outputs.imageName }}
+
+  # Étape 4 : API tests via curl
+  api-tests:
+    runs-on: ubuntu-latest
+    needs: [ build-and-push, versioning ]
+
+    services:
+      backend:
+        image: ${{ needs.versioning.outputs.imageName }}
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        ports:
+          - 8000:8000
+
+    steps:
+      - name: Wait for API to be ready
+        run: |
+          for i in {1..10}; do
+            curl -f http://localhost:8000/docs && break
+            echo "Waiting for API..."
+            sleep 2
+          done
+
+      - name: Run API tests
+        run: |
+          echo "## 🌐 API tests on Docker image" >> $GITHUB_STEP_SUMMARY
+          
+          # Test FastAPI documentation page
+          curl -s http://localhost:8000/docs | grep "FastAPI"
+          
+          # Test health endpoint
+          curl -s http://localhost:8000/health | grep "healthy"
+          
+          # Test version endpoint
+          curl -s http://localhost:8000/version | grep "version"
+          
+          echo "✅ All API tests passed" >> $GITHUB_STEP_SUMMARY
