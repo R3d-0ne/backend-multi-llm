@@ -30,11 +30,6 @@ python-multipart
 
 # LLM et intégration
 openai>=1.10.0
-langchain>=0.1.0  # Framework pour intégration LLM
-langchain-community>=0.0.10  # Extensions communautaires pour LangChain
-langchain-core>=0.1.17  # Composants de base pour LangChain
-langchainhub>=0.1.14  # Hub de prompts et chaînes pour LangChain
-langchain-text-splitters>=0.0.1  # Découpage de texte optimisé
 sentence-transformers>=2.4.0  # Version plus récente pour embeddings
 
 # Autogen et ses dépendances
