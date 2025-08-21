@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Body, Query
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 
-from ..services.search_service import search_service
+from ..services.service_compatibility import migration_manager
 
 router = APIRouter()
 
@@ -60,6 +60,7 @@ async def search_documents(search_params: SearchRequest = Body(...)):
                     filters[key] = value
         
         # Exécution de la recherche
+        search_service = migration_manager.get_search_service()
         results = search_service.hybrid_search(
             query=search_params.query,
             limit=search_params.limit,
@@ -99,6 +100,7 @@ async def simple_search(
         Liste des documents correspondant à la requête
     """
     try:
+        search_service = migration_manager.get_search_service()
         results = search_service.hybrid_search(
             query=q,
             limit=limit,
@@ -138,6 +140,7 @@ async def internal_search(search_params: InternalSearchRequest = Body(...)):
                     filters[key] = value
         
         # Exécution de la recherche avec le service de génération
+        search_service = migration_manager.get_search_service()
         results = search_service.search_with_generate_service(
             query=search_params.query,
             discussion_id=search_params.discussion_id,

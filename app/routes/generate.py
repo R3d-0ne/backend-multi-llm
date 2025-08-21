@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
-from ..services.generate_service import generate_service
+from ..services.service_compatibility import migration_manager
 from ..services.settings_service import settings_service
 from ..services.llm_service import llm_service
 
@@ -25,6 +25,7 @@ async def generate_response(request: GenerateRequest):
     """
     try:
         # Utiliser le modèle spécifié pour cette requête si fourni
+        generate_service = migration_manager.get_generate_service()
         result = generate_service.generate_response(
             discussion_id=request.discussion_id,
             settings_id=request.settings_id,

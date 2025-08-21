@@ -109,6 +109,18 @@ class SearchService:
             Dictionnaire contenant les résultats de recherche et optionnellement une réponse générée
         """
         try:
+            # Basic input validation
+            if not query or not isinstance(query, str):
+                raise ValueError("Query must be a non-empty string")
+            
+            if not isinstance(limit, int) or limit <= 0:
+                raise ValueError("Limit must be a positive integer")
+            
+            # Sanitize query
+            query = query.strip()
+            if not query:
+                raise ValueError("Query cannot be empty after trimming")
+                
             # Déterminer la collection à utiliser
             if collection_name is None:
                 collection_name = self.collection_name
@@ -197,10 +209,15 @@ class SearchService:
             
             return response
             
+        except ValueError as e:
+            # Erreurs de validation - retourner une erreur structurée
+            logger.warning(f"Erreur de validation: {str(e)}")
+            return {"error": f"Validation error: {str(e)}", "results": [], "total_found": 0, "query": query}
         except Exception as e:
+            # Autres erreurs - log complet et retour d'erreur générique
             logger.error(f"Erreur lors de la recherche: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            return {"error": str(e), "results": [], "total_found": 0}
+            return {"error": f"Search error: {str(e)}", "results": [], "total_found": 0, "query": query}
 
     def _hybrid_dense_sparse_search(
         self, 
