@@ -1,8 +1,19 @@
-import spacy
 from fastapi import FastAPI, HTTPException
 import os
 import logging
 from fastapi.middleware.cors import CORSMiddleware
+
+# Configuration du logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Conditional import for heavy dependencies to allow CI/testing without full installation
+try:
+    import spacy
+    SPACY_AVAILABLE = True
+except ImportError:
+    SPACY_AVAILABLE = False
+    logger.warning("spacy not available - some NLP features may be disabled")
 
 # Importation des routes de l'application
 from .routes import contexts, history, generate, settings, messages, discussions, documents, search
@@ -10,11 +21,6 @@ from .routes import contexts, history, generate, settings, messages, discussions
 from .services.qdrant_service import qdrant_service
 
 from .database import create_or_update_collections
-
-# Configuration du logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-# Initialisation des modèles NLP
 
 # Initialisation de l'application FastAPI
 app = FastAPI()

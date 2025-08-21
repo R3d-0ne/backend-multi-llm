@@ -11,6 +11,9 @@ pydantic
 # Variables d'environnement
 python-dotenv
 
+# Testing
+pytest
+
 # NLP et embeddings
 spacy
 nltk
