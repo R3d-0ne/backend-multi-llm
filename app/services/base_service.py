@@ -96,7 +96,6 @@ class BaseService(ABC):
         """
         log_data = {
             "service": self.service_name,
-            "message": message
         }
         if extra:
             log_data.update(extra)
