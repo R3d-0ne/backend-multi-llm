@@ -2,7 +2,7 @@
 Service d'embeddings refactorisé avec gestion d'erreurs améliorée et cache.
 """
 import requests
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Dict, Any
 from .base_service import CacheableService, LogLevel, ServiceResponse, ExternalServiceError
 from .config_service import config_service
 from .model_loader import minilm_model
