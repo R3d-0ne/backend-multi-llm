@@ -95,7 +95,7 @@ class BaseService(ABC):
             extra: Informations supplémentaires
         """
         log_data = {
-            "service": self.service_name,
+            "service": self.service_name
         }
         if extra:
             log_data.update(extra)

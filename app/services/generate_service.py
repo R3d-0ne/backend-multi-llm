@@ -2,9 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 import requests
 import logging
-import os
 from fastapi import HTTPException
-from dotenv import load_dotenv
 
 from .context_service import context_service
 from .discussions_service import discussions_service
@@ -23,12 +21,6 @@ class GenerateRequest(BaseModel):
 
 
 logger = logging.getLogger(__name__)
-
-# Chargement des variables d'environnement
-load_dotenv()
-
-# Configuration du LLM par défaut (sera remplacé par le service LLM)
-DEFAULT_LLM_MODEL = os.getenv("LLM_MODEL", "llama3.1:8b")
 
 
 class GenerateService:

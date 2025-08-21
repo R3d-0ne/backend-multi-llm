@@ -17,14 +17,18 @@ class DocumentService:
         self.collection_name = "documents"
         self.qdrant_service = QdrantService()
         self.upload_service = DocumentUploadService()
-        self._initialized = False
-        logger.info(f"Service de document créé (initialisation différée)")
-    
-    def _ensure_initialized(self):
-        """Initialise la collection si ce n'est pas déjà fait."""
-        if not self._initialized:
+ logger.info(f"Service de document initialisé avec la collection '{self.collection_name}'.")
+        
+        # Initialisation paresseuse de la collection (sera créée lors du premier usage)
+        self._collection_initialized = False
+
+    def _ensure_collection_exists(self):
+        """
+        S'assure que la collection existe, la crée si nécessaire.
+        Méthode appelée paresseusement lors du premier accès.
+        """
+        if not self._collection_initialized:
             try:
-                # Vérifier si la collection existe, sinon la créer
                 if not self.qdrant_service.collection_exists(self.collection_name):
                     self.qdrant_service.create_collection(
                         collection_name=self.collection_name,
@@ -32,11 +36,11 @@ class DocumentService:
                         distance="Cosine"
                     )
                     logger.info(f"Collection '{self.collection_name}' créée.")
-                self._initialized = True
-                logger.info(f"Service de document initialisé avec la collection '{self.collection_name}'.")
+                self._collection_initialized = True
             except Exception as e:
-                logger.warning(f"Impossible d'initialiser la collection: {e}")
-                # Continuer en mode dégradé
+                logger.warning(f"Impossible de vérifier/créer la collection: {e}")
+                # Continue sans erreur pour permettre l'initialisation du service
+
 
     def get_document(self, document_id: str) -> Dict[str, Any]:
         """
@@ -46,7 +50,8 @@ class DocumentService:
         :return: Dictionnaire contenant les informations du document.
         :raises ValueError: Si le document n'est pas trouvé.
         """
-        self._ensure_initialized()  # Initialiser si nécessaire
+        self._ensure_collection_exists()
+
         try:
             # Récupérer les métadonnées depuis Qdrant
             records = self.qdrant_service.get_document(
@@ -78,6 +83,7 @@ class DocumentService:
         
         :return: Liste des documents avec leurs métadonnées.
         """
+        self._ensure_collection_exists()
         try:
             # Récupérer directement les points depuis Qdrant
             response = self.qdrant_service.client.scroll(
@@ -112,6 +118,7 @@ class DocumentService:
         :return: True si la suppression a réussi.
         :raises ValueError: Si une erreur survient lors de la suppression.
         """
+        self._ensure_collection_exists()
         try:
             # Supprimer les métadonnées de Qdrant
             self.qdrant_service.delete_document(
@@ -134,6 +141,7 @@ class DocumentService:
         :return: Document mis à jour avec ses métadonnées.
         :raises ValueError: Si le document n'est pas trouvé.
         """
+        self._ensure_collection_exists()
         try:
             # Mettre à jour les métadonnées dans Qdrant
             self.qdrant_service.update_document_metadata(
@@ -152,5 +160,6 @@ class DocumentService:
             raise ValueError(f"Document non trouvé ou erreur de mise à jour: {e}")
 
 
-# Instance globale du service de documents
+# Instance du service de documents
+
 document_service = DocumentService() 

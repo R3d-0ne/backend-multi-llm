@@ -1,4 +1,3 @@
-import os
 import logging
 import requests
 import json
@@ -6,10 +5,10 @@ import math
 import re
 import traceback
 from typing import List, Dict, Any, Optional, Union
-from dotenv import load_dotenv
 
 from .qdrant_service import qdrant_service, QdrantService
 from .embedding_service import embedding_service
+from .config_service import config_service
 # Le service de génération n'est plus utilisé directement pour éviter la contamination des contextes
 # from .generate_service import GenerateService
 from ..libs.functions.global_functions import (
@@ -19,17 +18,9 @@ from ..libs.functions.global_functions import (
     extract_entities_advanced
 )
 
-# Chargement des variables d'environnement
-load_dotenv()
-
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Configuration du LLM
-# L'URL doit pointer vers la base de l'API Ollama, pas directement vers /api/generate
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://host.docker.internal:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "llama3.1:8b")
 
 # Prompt système pour llama3.1 - format simplifié et direct
 LLM_SYSTEM_PROMPT = """Tu es un assistant IA spécialisé dans l'analyse de documents. Ta tâche est de :
@@ -118,12 +109,24 @@ class SearchService:
             Dictionnaire contenant les résultats de recherche et optionnellement une réponse générée
         """
         try:
+            # Basic input validation
+            if not query or not isinstance(query, str):
+                raise ValueError("Query must be a non-empty string")
+            
+            if not isinstance(limit, int) or limit <= 0:
+                raise ValueError("Limit must be a positive integer")
+            
+            # Sanitize query
+            query = query.strip()
+            if not query:
+                raise ValueError("Query cannot be empty after trimming")
+                
             # Déterminer la collection à utiliser
             if collection_name is None:
                 collection_name = self.collection_name
             
             # Étape 1: Recherche vectorielle initiale avec un nombre plus élevé de résultats
-            initial_limit = limit * 4 if use_llm_reranking else limit
+            initial_limit = limit * config_service.search.initial_limit_multiplier if use_llm_reranking else limit
             
             # Pour la collection "documents", on essaie d'abord la recherche hybride avancée
             search_results = None
@@ -206,10 +209,15 @@ class SearchService:
             
             return response
             
+        except ValueError as e:
+            # Erreurs de validation - retourner une erreur structurée
+            logger.warning(f"Erreur de validation: {str(e)}")
+            return {"error": f"Validation error: {str(e)}", "results": [], "total_found": 0, "query": query}
         except Exception as e:
+            # Autres erreurs - log complet et retour d'erreur générique
             logger.error(f"Erreur lors de la recherche: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            return {"error": str(e), "results": [], "total_found": 0}
+            return {"error": f"Search error: {str(e)}", "results": [], "total_found": 0, "query": query}
 
     def _hybrid_dense_sparse_search(
         self, 
@@ -398,8 +406,8 @@ class SearchService:
                 density_score * 0.2         # 20% pour la densité
             )
             
-            # Application du boost (maximum 40% d'augmentation)
-            boost = 1 + (final_boost * 0.4)
+            # Application du boost (utilise le maximum configuré)
+            boost = 1 + (final_boost * config_service.search.keyword_boost_max)
             result["score"] = result.get("score", 0) * boost
             
             # Ajouter l'information sur le boost pour le débogage
@@ -432,7 +440,7 @@ class SearchService:
         reranked_results = []
         
         logger.info(f"Réordonnancement LLM avec {len(results)} résultats pour la requête: {query}")
-        logger.info(f"URL API LLM: {LLM_BASE_URL}/api/chat")
+        logger.info(f"URL API LLM: {config_service.llm.base_url}/api/chat")
         
         for i, result in enumerate(results):
             # Récupération du score original pour combiner plus tard
@@ -464,8 +472,9 @@ class SearchService:
                 continue
             
             # Tronquer le texte pour l'envoi au LLM
-            if len(document_text) > 2000:
-                document_text = document_text[:2000] + "..."
+            max_length = config_service.search.max_document_length
+            if len(document_text) > max_length:
+                document_text = document_text[:max_length] + "..."
             
             # Construire le prompt pour le LLM
             prompt = f"Requête: {query}\n\nDocument: {document_text}\n\nScore de pertinence (0-10):"
@@ -475,14 +484,14 @@ class SearchService:
                 
                 # Appel au LLM via l'API de chat
                 response = requests.post(
-                    f"{LLM_BASE_URL}/api/chat",
+                    f"{config_service.llm.base_url}/api/chat",
                     json={
-                        "model": LLM_MODEL,
+                        "model": config_service.llm.model,
                         "messages": [
                             {"role": "system", "content": LLM_RERANKER_SYSTEM_PROMPT},
                             {"role": "user", "content": prompt}
                         ],
-                        "temperature": 0.1  # Faible température pour des résultats plus cohérents
+                        "temperature": config_service.llm.temperature
                     }
                 )
                 
@@ -543,9 +552,9 @@ class SearchService:
                         
                     logger.info(f"Score LLM: {relevance_score}/10")
                     
-                    # Score combiné: 60% LLM + 40% score original normalisé à 10
+                    # Score combiné: utilise les poids configurés
                     normalized_original = min(10, original_score * 10)
-                    combined_score = (relevance_score * 0.6) + (normalized_original * 0.4)
+                    combined_score = (relevance_score * config_service.search.llm_score_weight) + (normalized_original * config_service.search.original_score_weight)
                     
                     # Ajustement du score en fonction de la présence de mots-clés
                     if "keyword_boost" in result:
@@ -553,7 +562,7 @@ class SearchService:
                         if isinstance(keyword_boost, dict):
                             # Utiliser le score de proximité pour ajuster le score final
                             proximity_factor = keyword_boost.get("proximity_score", 0)
-                            combined_score = combined_score * (1 + (proximity_factor * 0.2))  # Maximum 20% d'ajustement
+                            combined_score = combined_score * (1 + (proximity_factor * config_service.search.proximity_adjustment_max))
                     
                     # Créer une copie du résultat original et ajouter les nouveaux scores
                     new_result = result.copy()
@@ -642,8 +651,9 @@ class SearchService:
             if doc_text:
                 has_content = True
                 # Limiter la taille du texte
-                if len(doc_text) > 2000:
-                    doc_text = doc_text[:2000] + "..."
+                max_length = config_service.search.max_document_length
+                if len(doc_text) > max_length:
+                    doc_text = doc_text[:max_length] + "..."
                 
                 context_parts.append(f"Document {i+1}: {title}\n{doc_text}")
                 logger.info(f"Document {i+1} ajouté au contexte ({len(doc_text)} caractères)")
@@ -658,7 +668,7 @@ class SearchService:
         context_text = "\n\n".join(context_parts)
         
         # 4. Préparer l'appel au LLM
-        if "llama" in LLM_MODEL.lower():
+        if "llama" in config_service.llm.model.lower():
             # Construction des messages pour l'API Chat
             messages = [
                 {"role": "system", "content": """Tu es un assistant spécialisé dans l'analyse de documents. Ta tâche est de :
@@ -683,11 +693,11 @@ Analyse ces documents et réponds à la question en te basant uniquement sur leu
             ]
             
             # API endpoint
-            api_endpoint = f"{LLM_BASE_URL}/api/chat"
+            api_endpoint = f"{config_service.llm.base_url}/api/chat"
             payload = {
-                "model": LLM_MODEL,
+                "model": config_service.llm.model,
                 "messages": messages,
-                "temperature": 0.1,
+                "temperature": config_service.llm.temperature,
                 "stream": False
             }
             
@@ -704,11 +714,11 @@ Question : {query}
 Réponds en te basant uniquement sur les informations des documents ci-dessus :"""
             
             # API endpoint
-            api_endpoint = f"{LLM_BASE_URL}/api/generate"
+            api_endpoint = f"{config_service.llm.base_url}/api/generate"
             payload = {
-                "model": LLM_MODEL,
+                "model": config_service.llm.model,
                 "prompt": prompt,
-                "temperature": 0.1,
+                "temperature": config_service.llm.temperature,
                 "stream": False
             }
             
@@ -897,7 +907,7 @@ Réponds en te basant uniquement sur les informations des documents ci-dessus :"
                     "id": doc_id,
                     "title": title,
                     "score": doc_score,
-                    "text": doc_text[:2000] if doc_text else ""  # Limiter la taille à 2000 caractères
+                    "text": doc_text[:config_service.search.max_document_length] if doc_text else ""  # Limiter la taille selon la configuration
                 }
                 context_documents.append(doc_info)
                 
@@ -931,9 +941,9 @@ Réponds en te basant uniquement sur les informations des documents ci-dessus :"
             answer = ""
             
             try:
-                if "llama" in LLM_MODEL.lower():
+                if "llama" in config_service.llm.model.lower():
                     # Pour Llama, utiliser l'API de chat
-                    logger.info(f"Utilisation de l'API chat pour le modèle {LLM_MODEL}")
+                    logger.info(f"Utilisation de l'API chat pour le modèle {config_service.llm.model}")
                     
                     # Construction des messages pour l'API Chat
                     messages = [
@@ -960,11 +970,11 @@ Analyse ces documents et réponds à la question en te basant uniquement sur leu
                     
                     # Appel à l'API de chat
                     response = requests.post(
-                        f"{LLM_BASE_URL}/api/chat",
+                        f"{config_service.llm.base_url}/api/chat",
                         json={
-                            "model": LLM_MODEL,
+                            "model": config_service.llm.model,
                             "messages": messages,
-                            "temperature": 0.1,
+                            "temperature": config_service.llm.temperature,
                             "stream": False
                         }
                     )
@@ -1010,7 +1020,7 @@ Analyse ces documents et réponds à la question en te basant uniquement sur leu
                                 answer = "Je n'ai pas pu générer une réponse à cause d'un problème technique avec le LLM."
                 else:
                     # Pour d'autres modèles, utiliser l'API de génération
-                    logger.info(f"Utilisation de l'API generate pour le modèle {LLM_MODEL}")
+                    logger.info(f"Utilisation de l'API generate pour le modèle {config_service.llm.model}")
                     
                     # Construction du prompt pour l'API de génération
                     prompt = f"""Contexte de recherche:
@@ -1023,11 +1033,11 @@ Réponds en te basant uniquement sur les informations des documents ci-dessus:""
                     
                     # Appel à l'API de génération
                     response = requests.post(
-                        f"{LLM_BASE_URL}/api/generate",
+                        f"{config_service.llm.base_url}/api/generate",
                         json={
-                            "model": LLM_MODEL,
+                            "model": config_service.llm.model,
                             "prompt": prompt,
-                            "temperature": 0.1,
+                            "temperature": config_service.llm.temperature,
                             "stream": False
                         }
                     )

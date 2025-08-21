@@ -2,14 +2,7 @@ from fastapi import APIRouter, HTTPException, Body, Query
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 
-# Import du service original et de la couche de compatibilité
-from ..services.search_service import search_service
-try:
-    from ..services.service_compatibility import search_service_compat, migration_manager
-    COMPATIBILITY_AVAILABLE = True
-except ImportError:
-    COMPATIBILITY_AVAILABLE = False
-    print("⚠️  Couche de compatibilité non disponible pour le service de recherche")
+from ..services.service_compatibility import migration_manager
 
 router = APIRouter()
 
@@ -73,9 +66,8 @@ async def search_documents(search_params: SearchRequest = Body(...)):
                 else:
                     filters[key] = value
         
-        # Exécution de la recherche avec le service approprié
-        active_search_service = get_search_service()
-        results = active_search_service.hybrid_search(
+        search_service = migration_manager.get_search_service()
+        results = search_service.hybrid_search(
             query=search_params.query,
             limit=search_params.limit,
             filters=filters if filters else None,
@@ -114,8 +106,8 @@ async def simple_search(
         Liste des documents correspondant à la requête
     """
     try:
-        active_search_service = get_search_service()
-        results = active_search_service.hybrid_search(
+        search_service = migration_manager.get_search_service()
+        results = search_service.hybrid_search(
             query=q,
             limit=limit,
             use_llm_reranking=True,
@@ -154,8 +146,8 @@ async def internal_search(search_params: InternalSearchRequest = Body(...)):
                     filters[key] = value
         
         # Exécution de la recherche avec le service de génération
-        active_search_service = get_search_service()
-        results = active_search_service.search_with_generate_service(
+        search_service = migration_manager.get_search_service()
+        results = search_service.search_with_generate_service(
             query=search_params.query,
             discussion_id=search_params.discussion_id,
             settings_id=search_params.settings_id,
