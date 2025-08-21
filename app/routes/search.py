@@ -32,6 +32,13 @@ class InternalSearchRequest(BaseModel):
     filters: Optional[SearchFilters] = Field(None, description="Filtres à appliquer aux résultats")
 
 
+def get_search_service():
+    """Retourne le service de recherche approprié (refactorisé ou original)."""
+    if COMPATIBILITY_AVAILABLE and hasattr(migration_manager, 'get_search_service'):
+        return migration_manager.get_search_service()
+    return search_service
+
+
 @router.post("/search/")
 async def search_documents(search_params: SearchRequest = Body(...)):
     """
@@ -59,7 +66,6 @@ async def search_documents(search_params: SearchRequest = Body(...)):
                 else:
                     filters[key] = value
         
-        # Exécution de la recherche
         search_service = migration_manager.get_search_service()
         results = search_service.hybrid_search(
             query=search_params.query,

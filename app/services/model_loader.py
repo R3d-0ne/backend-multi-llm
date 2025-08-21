@@ -25,6 +25,7 @@ try:
             logger.warning("Modèle fr_core_news_md non trouvé, utilisation du modèle anglais par défaut")
             nlp = spacy.load("en_core_web_sm")
     
+
     bert_large = "dbmdz/bert-large-cased-finetuned-conll03-english"
     
     # Configuration du modèle d'embedding (port 11434 par défaut d'Ollama)

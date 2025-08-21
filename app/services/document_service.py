@@ -17,7 +17,7 @@ class DocumentService:
         self.collection_name = "documents"
         self.qdrant_service = QdrantService()
         self.upload_service = DocumentUploadService()
-        logger.info(f"Service de document initialisé avec la collection '{self.collection_name}'.")
+ logger.info(f"Service de document initialisé avec la collection '{self.collection_name}'.")
         
         # Initialisation paresseuse de la collection (sera créée lors du premier usage)
         self._collection_initialized = False
@@ -41,6 +41,7 @@ class DocumentService:
                 logger.warning(f"Impossible de vérifier/créer la collection: {e}")
                 # Continue sans erreur pour permettre l'initialisation du service
 
+
     def get_document(self, document_id: str) -> Dict[str, Any]:
         """
         Récupère les informations d'un document à partir de son identifiant.
@@ -50,6 +51,7 @@ class DocumentService:
         :raises ValueError: Si le document n'est pas trouvé.
         """
         self._ensure_collection_exists()
+
         try:
             # Récupérer les métadonnées depuis Qdrant
             records = self.qdrant_service.get_document(
@@ -159,4 +161,5 @@ class DocumentService:
 
 
 # Instance du service de documents
+
 document_service = DocumentService() 
