@@ -1,6 +1,5 @@
 import os
 import logging
-from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from typing import List, Dict, Any, Optional, Union
@@ -9,16 +8,12 @@ import inspect
 import json
 from qdrant_client.models import NamedVector
 
+from .config_service import config_service
+
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Charger les variables d'environnement
-load_dotenv()
-
-# Configuration Qdrant
-QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 
 
 class QdrantService:
@@ -41,11 +36,11 @@ class QdrantService:
         """Initialise la connexion à Qdrant"""
         try:
             self.client = QdrantClient(
-                host=QDRANT_HOST,
-                port=QDRANT_PORT,
+                host=config_service.qdrant.host,
+                port=config_service.qdrant.port,
                 prefer_grpc=False
             )
-            logger.info(f"Connecté à Qdrant ({QDRANT_HOST}:{QDRANT_PORT})")
+            logger.info(f"Connecté à Qdrant ({config_service.qdrant.host}:{config_service.qdrant.port})")
         except Exception as e:
             logger.error(f"Échec de connexion: {e}")
             raise RuntimeError("Connexion Qdrant impossible")
