@@ -15,7 +15,7 @@ try:
     logger.info("🚀 Chargement des modèles NLP...")
 
     # Chargement des modèles une seule fois
-    nlp = spacy.load("fr_dep_news_trf")
+    nlp = spacy.load("fr_core_news_sm")
     bert_large = "dbmdz/bert-large-cased-finetuned-conll03-english"
 
     

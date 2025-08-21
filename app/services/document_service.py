@@ -138,4 +138,8 @@ class DocumentService:
             
         except Exception as e:
             logger.error(f"Erreur lors de la mise à jour des métadonnées du document {document_id}: {e}")
-            raise ValueError(f"Document non trouvé ou erreur de mise à jour: {e}") 
+            raise ValueError(f"Document non trouvé ou erreur de mise à jour: {e}")
+
+
+# Instance globale du service de documents
+document_service = DocumentService() 
