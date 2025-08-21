@@ -17,16 +17,26 @@ class DocumentService:
         self.collection_name = "documents"
         self.qdrant_service = QdrantService()
         self.upload_service = DocumentUploadService()
-        logger.info(f"Service de document initialisé avec la collection '{self.collection_name}'.")
-        
-        # Vérifier si la collection existe, sinon la créer
-        if not self.qdrant_service.collection_exists(self.collection_name):
-            self.qdrant_service.create_collection(
-                collection_name=self.collection_name,
-                vector_size=1536,  # Taille standard pour les embeddings
-                distance="Cosine"
-            )
-            logger.info(f"Collection '{self.collection_name}' créée.")
+        self._initialized = False
+        logger.info(f"Service de document créé (initialisation différée)")
+    
+    def _ensure_initialized(self):
+        """Initialise la collection si ce n'est pas déjà fait."""
+        if not self._initialized:
+            try:
+                # Vérifier si la collection existe, sinon la créer
+                if not self.qdrant_service.collection_exists(self.collection_name):
+                    self.qdrant_service.create_collection(
+                        collection_name=self.collection_name,
+                        vector_size=1536,  # Taille standard pour les embeddings
+                        distance="Cosine"
+                    )
+                    logger.info(f"Collection '{self.collection_name}' créée.")
+                self._initialized = True
+                logger.info(f"Service de document initialisé avec la collection '{self.collection_name}'.")
+            except Exception as e:
+                logger.warning(f"Impossible d'initialiser la collection: {e}")
+                # Continuer en mode dégradé
 
     def get_document(self, document_id: str) -> Dict[str, Any]:
         """
@@ -36,6 +46,7 @@ class DocumentService:
         :return: Dictionnaire contenant les informations du document.
         :raises ValueError: Si le document n'est pas trouvé.
         """
+        self._ensure_initialized()  # Initialiser si nécessaire
         try:
             # Récupérer les métadonnées depuis Qdrant
             records = self.qdrant_service.get_document(

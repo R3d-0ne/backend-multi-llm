@@ -20,6 +20,9 @@ load_dotenv()
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 
+# Mode développement pour éviter les erreurs de connexion
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+
 
 class QdrantService:
     _instance = None
