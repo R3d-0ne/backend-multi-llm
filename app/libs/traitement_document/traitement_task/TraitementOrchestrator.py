@@ -4,7 +4,7 @@ from .OcrTask import OCRTask
 from .PreprocessingTask import PreprocessingTask
 from .TableDetectionTask import TableDetectionTask
 from .UploadDocumentTask import UploadDocumentTask
-from .LLMEnrichmentTask import LLMEnrichmentTask
+# from .LLMEnrichmentTask import LLMEnrichmentTask  # Missing file - commented out temporarily
 from .EmbeddingTask import EmbeddingTask
 from .StorageTask import StorageTask
 from ..PipelineOrchestrator import PipelineOrchestrator
@@ -30,7 +30,8 @@ class TraitementOrchestrator:
         # Ajout de l'étape d'enrichissement LLM (optionnel)
         if use_llm_enrichment:
             logger.info("TraitementOrchestrator - Enrichissement LLM activé pour le pipeline")
-            self.pipeline.add_step(LLMEnrichmentTask())
+            # self.pipeline.add_step(LLMEnrichmentTask())  # Temporarily disabled - missing file
+            logger.warning("TraitementOrchestrator - LLMEnrichmentTask temporairement désactivé (fichier manquant)")
         else:
             logger.info("TraitementOrchestrator - Enrichissement LLM désactivé pour le pipeline")
         

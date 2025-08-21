@@ -1,18 +1,49 @@
 import logging
 import os
 import re
-import flair
 import numpy as np
-from sentence_transformers import util
-from sklearn.metrics.pairwise import cosine_similarity
-from transformers import pipeline
 import base64
-from nltk.stem.snowball import FrenchStemmer
 import hashlib
 from collections import Counter
 import math
 
-from ...services.model_loader import nlp, bert_large
+# Conditional imports for heavy dependencies
+try:
+    import flair
+    FLAIR_AVAILABLE = True
+except ImportError:
+    FLAIR_AVAILABLE = False
+
+try:
+    from sentence_transformers import util
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+
+try:
+    from sklearn.metrics.pairwise import cosine_similarity
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+
+try:
+    from transformers import pipeline
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+
+try:
+    from nltk.stem.snowball import FrenchStemmer
+    NLTK_AVAILABLE = True
+except ImportError:
+    NLTK_AVAILABLE = False
+
+# Conditional import from model_loader
+try:
+    from ...services.model_loader import nlp, bert_large
+except ImportError:
+    nlp = None
+    bert_large = None
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -113,7 +144,11 @@ def stem_text(tokens):
         if not isinstance(tokens, list):
             raise TypeError("L'entrée doit être une liste de tokens.")
 
-        # Chargement du stemmer seulement si nécessaire
+        # Chargement du stemmer seulement si NLTK est disponible
+        if not NLTK_AVAILABLE:
+            logger.warning("NLTK non disponible - stemmatisation désactivée")
+            return tokens
+            
         stemmer = FrenchStemmer()
         return [stemmer.stem(token) for token in tokens]
 
@@ -307,6 +342,10 @@ def extract_entities_advanced(
     cleaned_text = re.sub(r"\s+", " ", text).strip()
 
     try:
+        if not TRANSFORMERS_AVAILABLE:
+            logger.warning("transformers non disponible - extraction NER désactivée")
+            return []
+            
         # Initialisation du pipeline NER pour le français
         ner_pipeline = pipeline(
             "ner",
@@ -318,7 +357,7 @@ def extract_entities_advanced(
         raw_output = ner_pipeline(cleaned_text)
     except Exception as e:
         logger.error(f"Erreur lors de l'extraction NER: {e}")
-        raise e
+        return []
 
     # Filtrage des entités par score minimal
     entities = []
@@ -354,10 +393,15 @@ def compute_embedding_similarity_from_vectors(embedding1, embedding2):
         if not isinstance(embedding1, np.ndarray) or not isinstance(embedding2, np.ndarray):
             raise TypeError("Les entrées doivent être des vecteurs numpy.")
 
+        if not SKLEARN_AVAILABLE:
+            logger.warning("sklearn non disponible - calcul de similarité désactivé")
+            return 0.0
+
         return cosine_similarity([embedding1], [embedding2])[0][0]
 
     except Exception as e:
         logger.error(f"❌ Erreur lors du calcul de similarité cosinus : {e}")
+        return 0.0
         return 0.0
 
 def create_sparse_vector(tokens, vocab_size=10000):

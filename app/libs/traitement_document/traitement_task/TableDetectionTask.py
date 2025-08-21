@@ -1,6 +1,12 @@
 import os
 import logging
-import camelot
+
+# Conditional import for camelot
+try:
+    import camelot
+    CAMELOT_AVAILABLE = True
+except ImportError:
+    CAMELOT_AVAILABLE = False
 
 from ..ClassTraitement import Traitement
 
@@ -48,6 +54,16 @@ class TableDetectionTask(Traitement):
         logger.info(f"{self.name} - Début de la détection de tableaux dans le PDF : {file_path}")
 
         try:
+            if not CAMELOT_AVAILABLE:
+                logger.warning(f"{self.name} - camelot non disponible - détection de tables désactivée")
+                prepared_data.update({
+                    "has_tables": False,
+                    "tables_count": 0,
+                    "pages_with_tables": [],
+                    "details_tables": []
+                })
+                return prepared_data
+                
             # Lecture du PDF avec Camelot
             # - flavor="lattice" si le PDF contient des lignes de table nettes
             # - flavor="stream" si la structure est moins évidente

@@ -2,8 +2,19 @@
 
 import os
 import logging
-import pytesseract
-from pdf2image import convert_from_path
+
+# Conditional imports for OCR functionality
+try:
+    import pytesseract
+    PYTESSERACT_AVAILABLE = True
+except ImportError:
+    PYTESSERACT_AVAILABLE = False
+
+try:
+    from pdf2image import convert_from_path
+    PDF2IMAGE_AVAILABLE = True
+except ImportError:
+    PDF2IMAGE_AVAILABLE = False
 
 from ..ClassTraitement import Traitement
 
@@ -55,6 +66,21 @@ class OCRTask(Traitement):
 
         if prepared_data["requires_ocr"]:
             logger.info(f"{self.name} - Début de la conversion du PDF en images pour OCR : {file_path}")
+            
+            if not PDF2IMAGE_AVAILABLE or not PYTESSERACT_AVAILABLE:
+                logger.error(f"{self.name} - OCR requis mais dépendances manquantes (pdf2image: {PDF2IMAGE_AVAILABLE}, pytesseract: {PYTESSERACT_AVAILABLE})")
+                # Retour avec texte vide au lieu de lever une exception
+                text_file_path = file_path.replace(os.path.splitext(file_path)[1], ".txt")
+                with open(text_file_path, 'w', encoding='utf-8') as f:
+                    f.write("")
+                prepared_data.update({
+                    "extracted_text": "",
+                    "text_file_path": text_file_path,
+                    "image_paths": []
+                })
+                logger.warning(f"{self.name} - OCR ignoré, fichier texte vide créé : {text_file_path}")
+                return prepared_data
+            
             try:
                 images = convert_from_path(file_path, dpi=300)
             except Exception as e:
