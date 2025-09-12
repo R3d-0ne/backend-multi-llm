@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Body, Query
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 
-from ..services.service_compatibility import migration_manager
+from ..services.search_service import search_service
 
 router = APIRouter()
 
@@ -32,13 +32,6 @@ class InternalSearchRequest(BaseModel):
     filters: Optional[SearchFilters] = Field(None, description="Filtres à appliquer aux résultats")
 
 
-def get_search_service():
-    """Retourne le service de recherche approprié (refactorisé ou original)."""
-    if COMPATIBILITY_AVAILABLE and hasattr(migration_manager, 'get_search_service'):
-        return migration_manager.get_search_service()
-    return search_service
-
-
 @router.post("/search/")
 async def search_documents(search_params: SearchRequest = Body(...)):
     """
@@ -66,7 +59,6 @@ async def search_documents(search_params: SearchRequest = Body(...)):
                 else:
                     filters[key] = value
         
-        search_service = migration_manager.get_search_service()
         results = search_service.hybrid_search(
             query=search_params.query,
             limit=search_params.limit,
@@ -106,7 +98,6 @@ async def simple_search(
         Liste des documents correspondant à la requête
     """
     try:
-        search_service = migration_manager.get_search_service()
         results = search_service.hybrid_search(
             query=q,
             limit=limit,
@@ -146,7 +137,6 @@ async def internal_search(search_params: InternalSearchRequest = Body(...)):
                     filters[key] = value
         
         # Exécution de la recherche avec le service de génération
-        search_service = migration_manager.get_search_service()
         results = search_service.search_with_generate_service(
             query=search_params.query,
             discussion_id=search_params.discussion_id,
@@ -168,4 +158,4 @@ async def internal_search(search_params: InternalSearchRequest = Body(...)):
         return results
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur lors de la recherche interne: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la recherche interne: {str(e)}")

@@ -7,13 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 # Importation des routes de l'application
 from .routes import contexts, history, generate, settings, messages, discussions, documents, search
 
-# Importation des nouveaux endpoints refactorisés
-try:
-    from .api import refactored_endpoints
-    REFACTORED_ENDPOINTS_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️  Les endpoints refactorisés ne sont pas disponibles: {e}")
-    REFACTORED_ENDPOINTS_AVAILABLE = False
 # Importation du service Qdrant
 from .services.qdrant_service import qdrant_service
 
@@ -45,13 +38,6 @@ app.include_router(discussions.router)
 app.include_router(messages.router)
 app.include_router(documents.router)
 app.include_router(search.router)
-
-# Inclusion des endpoints refactorisés (API v2) si disponibles
-if REFACTORED_ENDPOINTS_AVAILABLE:
-    app.include_router(refactored_endpoints.router)
-    print("✅ Endpoints refactorisés (API v2) chargés avec succès")
-else:
-    print("⚠️  Endpoints refactorisés non disponibles - fonctionnement en mode dégradé")
 
 # Récupération de l'URL d'Ollama depuis les variables d'environnement (pour un autre service)
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")

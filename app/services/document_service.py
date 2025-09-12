@@ -17,7 +17,7 @@ class DocumentService:
         self.collection_name = "documents"
         self.qdrant_service = QdrantService()
         self.upload_service = DocumentUploadService()
- logger.info(f"Service de document initialisé avec la collection '{self.collection_name}'.")
+        logger.info(f"Service de document initialisé avec la collection '{self.collection_name}'.")
         
         # Initialisation paresseuse de la collection (sera créée lors du premier usage)
         self._collection_initialized = False
