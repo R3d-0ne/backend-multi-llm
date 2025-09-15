@@ -155,15 +155,13 @@ class QdrantService:
             self,
             collection_name: str,
             query_vector: List[float],
-            limit: int = 3
+            limit: int = 3,
+            filters: Optional[dict] = None
     ) -> List[Dict[str, Any]]:
         """
         Recherche des documents similaires à partir d'un vecteur de requête.
         Supporte à la fois les collections standard et hybrides.
-        
-        Pour les collections hybrides, utilise le vecteur 'dense' par défaut.
-        
-        Retourne une liste de dictionnaires contenant l'ID, le score et le payload de chaque résultat.
+        Peut appliquer des filtres Qdrant si fournis.
         """
         try:
             # Conversion du vecteur de requête si nécessaire
@@ -172,13 +170,9 @@ class QdrantService:
             if isinstance(query_vector, list) and query_vector and isinstance(query_vector[0], list):
                 query_vector = query_vector[0]
             query_vector = [float(x) for x in query_vector]
-            
             # Vérifier si la collection est hybride
-            # Pour cela, nous essayons d'abord une recherche simple
-            # Si ça échoue avec l'erreur "Collection requires specified vector name", alors c'est hybride
             is_hybrid = False
             try:
-                # Essayer une recherche directe
                 logger.info(f"Test de recherche simple sur {collection_name} (détection de type de collection)")
                 self.client.search(
                     collection_name=collection_name,
@@ -193,45 +187,38 @@ class QdrantService:
                     logger.info(f"Collection {collection_name} détectée comme hybride (contient les vecteurs nommés)")
                 else:
                     logger.warning(f"Erreur lors du test de la collection: {e}")
-            
             # Effectuer la recherche appropriée selon le type de collection
             if is_hybrid:
                 logger.info(f"Utilisation de la recherche hybride (vecteur 'dense') pour {collection_name}")
-                # Créer un NamedVector correctement formaté pour les collections hybrides
-                
                 named_vector = NamedVector(
                     name="dense",
                     vector=query_vector
                 )
-                
                 search_result = self.client.search(
                     collection_name=collection_name,
                     query_vector=named_vector,
-                    limit=limit
+                    limit=limit,
+                    query_filter=filters
                 )
             else:
-                # Collection standard, utiliser la recherche simple
                 search_result = self.client.search(
                     collection_name=collection_name,
                     query_vector=query_vector,
-                    limit=limit
+                    limit=limit,
+                    query_filter=filters
                 )
-            
-            # Transformation des résultats
             formatted_results = []
             for res in search_result:
                 result = {
                     "id": res.id,
-                    "score": res.score,
-                    **res.payload
+                    "score": res.score
                 }
+                if hasattr(res, 'payload') and res.payload:
+                    result.update(res.payload)
                 formatted_results.append(result)
-            
             return formatted_results
-            
         except Exception as e:
             logger.error(f"Erreur recherche similaires: {e}")
-            # Débogage amélioré
             if hasattr(e, "__dict__"):
                 logger.debug(f"Détails de l'erreur: {e.__dict__}")
             return []
@@ -242,7 +229,7 @@ class QdrantService:
         """
         if current_depth > max_depth:
             return
-            
+
         if obj is None:
             logger.info("Objet de réponse: None")
             return

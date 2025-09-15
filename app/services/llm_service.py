@@ -106,8 +106,11 @@ class LLMService:
             logger.info(f"Modèle changé pour: {model_id}")
             return True
         else:
-            logger.warning(f"Modèle {model_id} non disponible")
-            return False
+            # Si le modèle n'est pas dans la liste, on l'accepte quand même
+            # car il pourrait être disponible sur le serveur LLM mais pas encore récupéré
+            logger.info(f"Modèle {model_id} non trouvé dans la liste des modèles disponibles, mais accepté quand même")
+            self.model_name = model_id
+            return True
 
     def generate_response(self, prompt: str,
                           temperature: Optional[float] = None,

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
@@ -41,5 +41,18 @@ async def list_available_models():
     """Liste les modèles LLM disponibles"""
     try:
         return llm_service.get_available_models()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/models/select")
+async def select_model(model_id: str = Query(..., description="ID du modèle à sélectionner")):
+    """Sélectionne un modèle LLM par défaut"""
+    try:
+        success = llm_service.set_model(model_id)
+        if success:
+            return {"message": f"Modèle {model_id} sélectionné avec succès", "model_id": model_id}
+        else:
+            raise HTTPException(status_code=400, detail=f"Modèle {model_id} non disponible")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

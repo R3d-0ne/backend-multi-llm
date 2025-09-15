@@ -77,38 +77,57 @@ class DocumentService:
             logger.error(f"Erreur lors de la récupération du document {document_id}: {e}")
             raise ValueError(f"Document non trouvé: {e}")
 
-    def list_documents(self) -> List[Dict[str, Any]]:
+    def list_documents(self, limit: int = 50, offset: int = 0) -> Dict[str, Any]:
         """
-        Liste tous les documents disponibles directement depuis Qdrant.
+        Liste les documents disponibles avec pagination depuis Qdrant.
         
-        :return: Liste des documents avec leurs métadonnées.
+        :param limit: Nombre maximum de documents à retourner (défaut: 50)
+        :param offset: Nombre de documents à ignorer (défaut: 0)
+        :return: Dictionnaire contenant les documents et les métadonnées de pagination.
         """
         self._ensure_collection_exists()
         try:
-            # Récupérer directement les points depuis Qdrant
+            # Récupérer les points depuis Qdrant avec pagination
             response = self.qdrant_service.client.scroll(
                 collection_name=self.collection_name,
-                limit=1000,  # Limite raisonnable pour éviter de surcharger la mémoire
+                limit=limit,
+                offset=offset,
                 with_payload=True,
                 with_vectors=False  # On n'a pas besoin des vecteurs pour le listing
             )
             
             # Extraire les points de la réponse
             points = response[0]
+            next_page_offset = response[1]  # Offset pour la page suivante
             
             # Transformer les points en documents
             documents = []
             for point in points:
                 documents.append({
+                    "id": point.id,
                     "document_id": point.id,
                     "metadata": point.payload if point.payload else {}
                 })
             
-            return documents
+            return {
+                "documents": documents,
+                "total": len(documents),
+                "limit": limit,
+                "offset": offset,
+                "has_more": next_page_offset is not None,
+                "next_offset": next_page_offset
+            }
             
         except Exception as e:
             logger.error(f"Erreur lors du listage des documents depuis Qdrant: {e}")
-            return []
+            return {
+                "documents": [],
+                "total": 0,
+                "limit": limit,
+                "offset": offset,
+                "has_more": False,
+                "next_offset": None
+            }
 
     def delete_document(self, document_id: str) -> bool:
         """

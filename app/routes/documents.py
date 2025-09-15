@@ -75,15 +75,17 @@ async def get_document(document_id: str):
 
 
 @router.get("/documents/")
-async def list_documents():
+async def list_documents(limit: int = 50, offset: int = 0):
     """
-    Liste tous les documents disponibles.
+    Liste les documents disponibles avec pagination.
 
-    :return: Une liste de documents avec leurs métadonnées.
+    :param limit: Nombre maximum de documents à retourner (défaut: 50)
+    :param offset: Nombre de documents à ignorer (défaut: 0)
+    :return: Un dictionnaire contenant les documents et les métadonnées de pagination.
     """
     try:
-        documents = document_service.list_documents()
-        return documents
+        result = document_service.list_documents(limit=limit, offset=offset)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors du listage des documents : {e}")
 
