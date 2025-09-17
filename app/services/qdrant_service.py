@@ -314,8 +314,8 @@ class QdrantService:
     def create_hybrid_collection(
         self,
         collection_name: str,
-        dense_vector_size: int = 768,
-        entity_vector_size: int = 768,
+        dense_vector_size: int = 384,
+        entity_vector_size: int = 384,
         sparse_vector_size: int = 10000,
         distance: str = "Cosine"
     ) -> None:

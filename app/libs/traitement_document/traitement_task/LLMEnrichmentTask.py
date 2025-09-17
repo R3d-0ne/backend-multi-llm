@@ -4,6 +4,7 @@ Tâche d'enrichissement LLM pour l'extraction d'entités et l'amélioration des 
 import logging
 from typing import Dict, Any, List
 from ..ClassTraitement import Traitement
+from ....services.llm_service import llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -42,28 +43,63 @@ class LLMEnrichmentTask(Traitement):
         """
         try:
             logger.info(f"Début de l'enrichissement LLM pour: {data.get('filename', 'document inconnu')}")
-            
-            # Récupérer le texte du document
-            content = data.get('content', '')
-            if not content:
-                logger.warning("Aucun contenu trouvé pour l'enrichissement LLM")
+
+            # Choisir le meilleur texte disponible: cleaned_text (prétraité) > extracted_text > content
+            content = (
+                data.get('cleaned_text')
+                or data.get('extracted_text')
+                or data.get('content')
+                or ''
+            )
+
+            if not isinstance(content, str) or not content.strip():
+                logger.warning("Aucun texte exploitable pour l'enrichissement LLM (cleaned_text/extracted_text/content)")
+                data['llm_enrichment_status'] = 'not_performed'
                 return data
-            
-            # Enrichir les métadonnées (version simplifiée pour éviter les dépendances)
-            enriched_metadata = self._extract_entities(content)
-            
-            # Ajouter les métadonnées enrichies
-            if 'metadata' not in data:
-                data['metadata'] = {}
-            
-            data['metadata'].update(enriched_metadata)
-            data['llm_enrichment_completed'] = True
-            
+
+            # Schéma d'extraction structuré attendu du LLM
+            schema = {
+                "llm_entities": [{"text": "string", "label": "string"}],
+                "llm_keywords": ["string"],
+                "llm_concepts": ["string"],
+                "llm_summary": "string",
+                "llm_document_type": "string",
+                "llm_sentiment": "string",
+                "llm_importance": "number"
+            }
+
+            response = llm_service.extract_structured_data(content, schema)
+
+            # Si le service retourne un fallback/erreur, marquer comme non effectué
+            if isinstance(response, dict) and response.get("error"):
+                logger.warning("LLM a retourné une réponse de secours. Enrichissement non effectué.")
+                data['llm_enrichment_status'] = 'not_performed'
+                data['llm_enrichment_error'] = response.get('message', 'fallback')
+                return data
+
+            # Normaliser et injecter les champs attendus en sortie de pipeline
+            data['llm_entities'] = response.get('llm_entities', []) or []
+            data['llm_keywords'] = response.get('llm_keywords', []) or []
+            data['llm_concepts'] = response.get('llm_concepts', []) or []
+            data['llm_summary'] = response.get('llm_summary', '') or ''
+            data['llm_document_type'] = response.get('llm_document_type', '') or ''
+            data['llm_sentiment'] = response.get('llm_sentiment', 'neutre') or 'neutre'
+            # importance en entier raisonnable 1..10
+            importance = response.get('llm_importance', 5)
+            try:
+                importance = int(importance)
+            except Exception:
+                importance = 5
+            data['llm_importance'] = max(1, min(10, importance))
+
+            data['llm_enrichment_status'] = 'success'
+
             logger.info("Enrichissement LLM terminé avec succès")
             return data
-            
+
         except Exception as e:
             logger.error(f"Erreur lors de l'enrichissement LLM: {e}")
+            data['llm_enrichment_status'] = 'error'
             data['llm_enrichment_error'] = str(e)
             return data
     

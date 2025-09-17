@@ -53,6 +53,7 @@ async def create_document(
             "success": True,
             "message": f"Document uploadé et traitement lancé avec succès (LLM enrichment: {'activé' if use_llm_enrichment else 'désactivé'})",
             "document_id": result.get("document_id"),
+            "processing_time_s": result.get("processing_time_s"),
             "result": result
         }
     except Exception as e:

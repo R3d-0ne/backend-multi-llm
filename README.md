@@ -1,204 +1,104 @@
-# Service de Recherche Avancée avec Qdrant et LLM
+# Backend FastAPI – Recherche hybride, gestion de documents et génération LLM
 
-Ce projet implémente un service de recherche avancée qui combine la recherche vectorielle avec Qdrant et l'utilisation de LLM (Large Language Models) pour améliorer les résultats de recherche et générer des réponses contextuelles.
+Service FastAPI intégrant Qdrant pour la recherche vectorielle/hybride, un pipeline d’upload/traitement documentaire, la gestion de discussions/messages/contexte, et la génération de réponses via un LLM (Ollama/OpenAI-like).
 
-## Architecture de la solution
+## Démarrage rapide
 
-Le service de recherche avancée implémente une approche hybride avec :
+- Dépendances Python: `pip install -r requirements.txt`
+- Variables d’env: créez `backend/.env` (voir section Variables d’environnement)
+- Lancer en local: `uvicorn app.main:app --reload`
+- Avec Docker Compose: service `api` expose `http://localhost:8000`
 
-1. **Recherche sémantique par embeddings** : Utilisation des embeddings pour trouver des documents sémantiquement similaires à la requête
-2. **Boost par mots-clés** : Amélioration des scores pour les documents contenant les mots-clés exacts de la requête
-3. **Filtres sur métadonnées** : Possibilité de filtrer par divers attributs (dates, présence d'entités nommées, etc.)
-4. **Réordonnancement par LLM** : Utilisation d'un LLM pour évaluer la pertinence réelle des documents trouvés
-5. **Génération de réponses** : Création d'une réponse directe basée sur les documents les plus pertinents
+## Endpoints principaux
 
-## Processus de recherche détaillé
+- Santé et version:
+  - `GET /` initialise/valide les collections Qdrant
+  - `GET /health`
+  - `GET /version`
 
-Le processus de recherche implémente plusieurs étapes sophistiquées pour maximiser la pertinence des résultats :
+- Recherche (`app/routes/search.py`):
+  - `POST /search/` recherche avancée avec filtres, boost mots‑clés, rerank LLM, réponse optionnelle
+  - `GET /search/simple` recherche simple par q=name avec fallback vectoriel
+  - `POST /search/internal/` recherche + génération de réponse contextualisée
+  - `POST /search/document-query/` QA ciblée sur un document par nom
+  - Debug/tests: `GET /search/test-document-search/{document_name}`, `GET /search/test-simple-search/{query}`, `GET /search/debug-collection`
 
-### 1. Détection du type de recherche et préparation des vecteurs
+- Documents (`app/routes/documents.py`):
+  - `POST /documents/` upload fichier, lance pipeline d’extraction (OCR, NER, résumé…) avec `use_llm_enrichment` (bool)
+  - `GET /documents/{document_id}`
+  - `GET /documents/?limit&offset`
+  - `PATCH /documents/{document_id}` mise à jour métadonnées
+  - `DELETE /documents/{document_id}`
 
-- **Détection de la collection** : Le système détermine automatiquement si la collection cible est standard ou hybride (avec vecteurs nommés)
-- **Génération des embeddings** :
-  - **Vecteur dense** : Représentation vectorielle dense de la requête entière (768 dimensions)
-  - **Vecteur d'entités** : Embedding spécifique des entités nommées dans la requête
-  - **Vecteur sparse** : Représentation sparse (clairsemée) des mots-clés de la requête
+- Discussions/messages/contexte/historique:
+  - Discussions (`/discussions`, GET/POST/PUT/DELETE, `app/routes/discussions.py`)
+  - Messages (`/messages`, POST/GET/PUT/DELETE, `app/routes/messages.py`)
+  - Contextes (`/contexts`, POST/GET/DELETE, `app/routes/contexts.py`)
+  - Historique (`/history/`, POST/GET/POST search/DELETE, `app/routes/history.py`)
 
-### 2. Recherche vectorielle initiale
+- Génération LLM (`app/routes/generate.py`):
+  - `POST /generate` {discussion_id?, settings_id?, current_message, additional_info?, model_id?}
+  - `GET /models` liste des modèles disponibles (Ollama tags par défaut)
+  - `POST /models/select?model_id=...` sélection du modèle par défaut
 
-- **Pour les collections hybrides** (comme "documents") :
-  - **Recherche multi-vectorielle** : Combine les vecteurs dense (60%), entités (30%) et sparse (10%)
-  - **Détection automatique du format** : Utilise NamedVector de Qdrant pour la collection hybride
-  - **Fallback intelligent** : Si la recherche avancée échoue, repli sur une recherche simple
-- **Pour les collections standard** :
-  - **Recherche simple** : Utilisation directe du vecteur dense
+## Recherche hybride et reranking
 
-### 3. Filtrage des résultats (si applicable)
+- Collection cible: `documents` (format hybride supporté).
+- Étapes: pré‑traitement requête (extraction d’entités/synonymes) → recherche Qdrant (détection auto standard/hybride, vecteur nommé `dense`) → filtres → boost mots‑clés → reranking LLM (scores 0‑10, fallback intelligent si parsing KO) → métriques et réponse optionnelle.
+- Méthodes côté service: `SearchService.hybrid_search`, `simple_vector_search`, `search_document_by_name_*`, `search_with_generate_service`.
 
-- **Filtres booléens** : Présence de tables, entités nommées, emails, etc.
-- **Filtres de plage** : Dates d'upload, valeurs numériques
-- **Filtres textuels** : Nom de fichier contenant des termes spécifiques
+## Variables d’environnement (exemples)
 
-### 4. Boost des correspondances par mots-clés
+- Qdrant:
+  - `QDRANT_HOST` (ex: `qdrant` en Docker, `localhost` en local)
+  - `QDRANT_PORT` (ex: `6333`)
+- LLM (Ollama/OpenAI-like):
+  - `LLM_API_URL` (défaut: `http://host.docker.internal:8000`)
+  - `LLM_MODEL_NAME` (défaut: `llama3.1:8b`)
+  - `LLM_MAX_TOKENS` (défaut: `1024`)
+  - `LLM_TEMPERATURE` (défaut: `0.1`)
+  - `LLM_REQUEST_TIMEOUT` (défaut: `10`)
+- Divers:
+  - `COMMIT_ID` pour `/version`
 
-- **Tokenisation** : La requête est décomposée en mots-clés significatifs
-- **Analyse du contenu** : Chaque document est analysé pour la présence de ces mots-clés
-- **Ajustement des scores** : +20% pour chaque mot-clé présent, plafonné à +100%
+Placez ces valeurs dans `backend/.env` (chargé par Docker Compose).
 
-### 5. Réordonnancement par LLM
+## Lancement avec Docker
 
-- **Évaluation individuelle** : Chaque document est soumis au LLM avec la requête
-- **Notation de pertinence** : Le LLM attribue un score de 0 à 10 pour chaque document
-- **Score combiné** : 70% score LLM + 30% score vectoriel original
-- **Extraction robuste** : Capacité à extraire le score même en cas d'erreur de format
+Compose (`docker-compose.yml` à la racine):
+- `api`: build `./backend`, commande `uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`, volume `./backend:/app`, ports `8000:8000`, dépend de `qdrant`.
+- `qdrant`: image `qdrant/qdrant:latest`, ports `6333:6333`, volume nommé `qdrant_data`.
+- `web`: Node 20, monte `./frontend`, lance `npm run dev -- --host 0.0.0.0 --port 5173`, ports `5173:5173`.
 
-### 6. Génération de réponse contextuelle
+Backend Dockerfile installe Poppler et Tesseract pour OCR, modèles spaCy FR, et dépendances (voir `requirements.txt`).
 
-- **Sélection des meilleurs documents** : Les 3 documents les plus pertinents sont retenus
-- **Extraction intelligente du texte** : 
-  - Détection multi-sources (cleaned_text, métadonnées, etc.)
-  - Vérification de la qualité et du format du texte
-  - Prétraitement pour limiter la taille à 2000 caractères par document
-- **Construction du prompt contextuel** : Formatage structuré des documents pour le LLM
-- **Appel API adaptatif** :
-  - API chat pour les modèles Llama (comme llama3.1:8b)
-  - API generate pour les autres modèles
-- **Gestion robuste des réponses** :
-  - Traitement des erreurs de parsing JSON
-  - Extraction manuelle du contenu en cas d'échec
-  - Messages d'erreur explicites et journalisation détaillée
+## Exemples d’appels
 
-## Support des collections hybrides
-
-Le système prend en charge les collections hybrides de Qdrant qui permettent de combiner différents types de vecteurs :
-
-- **Collection "documents"** : Configuration hybride avec vecteurs dense, entity et sparse
-- **Autres collections** : Configuration standard avec un seul vecteur
-
-Pour les collections hybrides, le système :
-1. Détecte automatiquement le type de collection
-2. Utilise le format NamedVector approprié
-3. Combine intelligemment les résultats multi-vectoriels
-
-## Optimisations techniques
-
-### 1. Robustesse des appels API
-
-- **Gestion avancée des erreurs** : Traitement des erreurs de connexion, timeout, et parsing
-- **Extraction intelligente** : Capacité à extraire l'information même d'une réponse JSON malformée
-- **Logging détaillé** : Journalisation complète pour faciliter le débogage
-
-### 2. Adaptabilité aux modèles LLM
-
-- **Détection automatique** : Adaptation du format selon le type de modèle (Llama, etc.)
-- **Prompts optimisés** : Instructions spécifiques selon le modèle et la tâche
-- **Paramètres ajustés** : Temperature de 0.1 pour maximiser la précision des réponses
-
-### 3. Performance et scalabilité
-
-- **Récupération optimisée** : Limite initiale plus élevée pour permettre un meilleur filtrage
-- **Troncature intelligente** : Limitation de la taille des documents pour les appels LLM
-- **Parallélisation potentielle** : Architecture permettant le traitement parallèle futur
-
-## Composants principaux
-
-### 1. Service de recherche (`search_service.py`)
-
-Ce service orchestre tout le processus de recherche :
-- Initialisation de la recherche vectorielle avec Qdrant
-- Application des filtres sur les métadonnées
-- Boost des résultats contenant des mots-clés de la requête
-- Réordonnancement des résultats avec un LLM
-- Génération de réponses basées sur les documents trouvés
-
-### 2. Service Qdrant (`qdrant_service.py`)
-
-Gère l'interaction avec la base de données vectorielle Qdrant :
-- Détection automatique du type de collection (standard vs. hybride)
-- Support pour les recherches hybrides avec vecteurs nommés
-- Gestion robuste des différents formats de réponse
-
-### 3. API de recherche (`search.py`)
-
-Expose deux endpoints pour la recherche :
-- `/search/` (POST) : API complète avec filtres, réordonnancement LLM et génération de réponse
-- `/search/simple` (GET) : Version simplifiée pour les requêtes rapides
-- `/search/internal/` (POST) : Recherche avec génération de réponse contextuelle
-
-## Configuration
-
-Le service nécessite les variables d'environnement suivantes :
-- `QDRANT_HOST` et `QDRANT_PORT` : Configuration du serveur Qdrant
-- `LLM_BASE_URL` : URL du service LLM (par défaut: http://host.docker.internal:11434)
-- `LLM_MODEL` : Nom du modèle LLM à utiliser (par défaut: llama3.1:8b)
-
-## Utilisation
-
-### Exemple de requête POST
-
+- POST `/search/` minimal:
 ```json
-POST /search/
 {
-  "query": "Documents contenant des informations sur les contrats d'assurance",
+  "query": "rib banque",
   "limit": 5,
-  "filters": {
-    "has_tables": true,
-    "upload_date_range": {
-      "start": "2023-01-01T00:00:00",
-      "end": "2023-12-31T23:59:59"
-    }
-  },
   "use_llm_reranking": true,
   "boost_keywords": true,
-  "generate_answer": true
+  "generate_answer": false
 }
 ```
 
-### Exemple de requête GET simplifiée
+- GET `/search/simple?q=document%20bancaire&limit=5`
 
-```
-GET /search/simple?q=contrats%20assurance&limit=5&generate_answer=true
-```
-
-### Exemple de recherche interne avec génération de réponse
-
+- POST `/generate`:
 ```json
-POST /search/internal/
 {
-  "query": "Quelles sont les clauses importantes dans les contrats d'assurance?",
-  "limit": 5,
-  "filters": {
-    "has_tables": true
-  }
+  "current_message": "Explique le contenu du document trouvé",
+  "discussion_id": "<optionnel>",
+  "settings_id": "<optionnel>",
+  "model_id": "llama3.1:8b"
 }
 ```
 
-## Installation et exécution
+## Notes d’implémentation
 
-1. Installer les dépendances : `pip install -r requirements.txt`
-2. Configurer les variables d'environnement dans un fichier `.env`
-3. Lancer le serveur : `uvicorn app.main:app --reload`
-
-## Paramétrage avancé
-
-Le service permet de configurer :
-- Les prompts système utilisés pour le réordonnancement et la génération de réponses
-- La pondération entre scores de similarité vectorielle et scores LLM
-- Le facteur de boost pour les correspondances de mots-clés
-- Le nombre de documents à utiliser pour la génération de réponses
-
-## Bonnes pratiques implémentées
-
-1. **Traçabilité complète** : Conservation des scores originaux et des scores LLM pour chaque document
-2. **Gestion d'erreurs robuste** : Fallback vers la recherche vectorielle en cas d'échec du LLM
-3. **Optimisation des prompts** : Instructions précises pour le LLM afin d'obtenir des résultats cohérents
-4. **Documentation complète** : Tous les paramètres et méthodes sont documentés
-5. **Logs détaillés** : Journalisation extensive pour faciliter le débogage
-
-## Évolutions futures
-
-1. Implémentation de la recherche par "query reformulation" (le LLM réécrit la requête pour la rendre plus précise)
-2. Ajout de la fonctionnalité de clustering des résultats pour regrouper les documents similaires
-3. Support pour des requêtes en langage naturel plus complexes
-4. Mise en cache des résultats fréquemment demandés
-5. Parallélisation du réordonnancement LLM pour améliorer les performances 
+- Les collections Qdrant sont (ré)initialisées au `GET /` via `create_or_update_collections` pour: `contexts`, `discussions`, `history`, `settings`, `messages`, `documents`.
+- `DocumentUploadService` déclenche un pipeline (`libs/traitement_document`) après upload, avec OCR et enrichissement LLM optionnel.
+- Le service LLM choisit automatiquement l’API chat/generate et gère des fallbacks robustes.

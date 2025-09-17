@@ -38,7 +38,6 @@ class Traitement(ABC):
         """
         start_time = time.time()
         try:
-            print(f"{self.name} - Préparation...")
             prepared_data = self.prepare(data)
             logging.info(f"{self.name} - Préparation terminée")
         except Exception as e:
@@ -48,7 +47,6 @@ class Traitement(ABC):
         retries = 0
         while retries < self.max_retries:
             try:
-                print(f"{self.name} - Exécution...")
                 result = self.execute(prepared_data)
                 total_time = time.time() - start_time
                 logging.info(f"{self.name} - Exécution réussie en {total_time:.2f}s")
@@ -56,7 +54,7 @@ class Traitement(ABC):
             except Exception as e:
                 retries += 1
                 logging.warning(f"{self.name} - Erreur ({retries}/{self.max_retries}) : {e}")
-                print(f"{self.name} - Échec tentative {retries}/{self.max_retries}, attente {self.retry_delay}s...")
+                logging.info(f"{self.name} - Échec tentative {retries}/{self.max_retries}, attente {self.retry_delay}s...")
                 time.sleep(self.retry_delay)
 
         logging.error(f"{self.name} - Échec final après {self.max_retries} tentatives.")

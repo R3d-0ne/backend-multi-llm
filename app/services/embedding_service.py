@@ -1,9 +1,8 @@
 import logging
-import requests
 import hashlib
 import time
 from typing import List, Union, Optional
-from .model_loader import minilm_model
+from .model_loader import embedding_model
 from ..libs.functions.global_functions import convert_numpy_types
 
 # Configuration du logging
@@ -12,11 +11,12 @@ logger = logging.getLogger(__name__)
 
 class EmbeddingService:
     def __init__(self):
-        self.model = minilm_model
+        self.model = embedding_model
         self.cache = {}  # Cache simple pour les embeddings
         self.cache_max_size = 1000  # Taille maximale du cache
         self.request_timeout = 30  # Timeout pour les requêtes
         self.max_retries = 3  # Nombre de tentatives en cas d'échec
+        self.vector_size = 384  # all-MiniLM-L6-v2 output dimension
 
     def _get_cache_key(self, text: str) -> str:
         """Génère une clé de cache pour un texte."""
@@ -76,7 +76,7 @@ class EmbeddingService:
 
         # Traiter les textes non mis en cache
         for index, text, cache_key in texts_to_process:
-            embedding = self._get_embedding_with_retry(text)
+            embedding = self._get_embedding_local_with_retry(text)
             if embedding is not None:
                 embeddings[index] = embedding
                 # Mettre en cache
@@ -85,7 +85,7 @@ class EmbeddingService:
             else:
                 logger.error(f"Échec de génération d'embedding pour le texte: {text[:100]}...")
                 # Utiliser un vecteur zéro comme fallback
-                embeddings[index] = [0.0] * 768  # Dimension par défaut
+                embeddings[index] = [0.0] * self.vector_size
 
         # Filtrer les embeddings None (ne devrait plus arriver)
         embeddings = [emb for emb in embeddings if emb is not None]
@@ -96,57 +96,21 @@ class EmbeddingService:
 
         return embeddings[0] if single_text else embeddings
 
-    def _get_embedding_with_retry(self, text: str) -> Optional[List[float]]:
-        """
-        Génère un embedding avec retry en cas d'échec.
-        
-        Args:
-            text: Texte à traiter
-            
-        Returns:
-            Vecteur d'embedding ou None en cas d'échec
-        """
+    def _get_embedding_local_with_retry(self, text: str) -> Optional[List[float]]:
+        """Génère un embedding local (Sentence-Transformers) avec retry."""
         for attempt in range(self.max_retries):
             try:
-                logger.debug(f"Tentative {attempt + 1}/{self.max_retries} pour l'embedding")
-                
-                response = requests.post(
-                    f"{self.model.base_url}/api/embeddings",
-                    json={
-                        "model": self.model.model_name,
-                        "prompt": text
-                    },
-                    timeout=self.request_timeout
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    embedding = result.get("embedding", [])
-                    
-                    if embedding and isinstance(embedding, list) and len(embedding) > 0:
-                        logger.debug(f"Embedding généré avec succès: {len(embedding)} dimensions")
-                        return convert_numpy_types(embedding)
-                    else:
-                        logger.warning("Embedding vide reçu du serveur")
-                else:
-                    logger.warning(f"Code de statut HTTP: {response.status_code}")
-                    
-            except requests.exceptions.Timeout:
-                logger.warning(f"Timeout lors de la tentative {attempt + 1}")
-            except requests.exceptions.ConnectionError:
-                logger.warning(f"Erreur de connexion lors de la tentative {attempt + 1}")
-            except requests.exceptions.RequestException as e:
-                logger.warning(f"Erreur de requête lors de la tentative {attempt + 1}: {e}")
+                logger.debug(f"Tentative {attempt + 1}/{self.max_retries} pour l'embedding local")
+                vec = self.model.encode(text, normalize_embeddings=True)
+                if vec is not None:
+                    return convert_numpy_types(vec.tolist())
             except Exception as e:
-                logger.error(f"Erreur inattendue lors de la tentative {attempt + 1}: {e}")
-            
-            # Attendre avant de réessayer (backoff exponentiel)
+                logger.warning(f"Erreur d'embedding locale tentative {attempt + 1}: {e}")
             if attempt < self.max_retries - 1:
-                wait_time = 2 ** attempt  # 1s, 2s, 4s...
+                wait_time = 2 ** attempt
                 logger.info(f"Attente de {wait_time}s avant la prochaine tentative...")
                 time.sleep(wait_time)
-
-        logger.error(f"Échec de génération d'embedding après {self.max_retries} tentatives")
+        logger.error(f"Échec de génération d'embedding locale après {self.max_retries} tentatives")
         return None
 
     def get_cache_stats(self) -> dict:

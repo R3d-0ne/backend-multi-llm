@@ -63,15 +63,15 @@ class TraitementOrchestrator:
             if use_hybrid_storage:
                 qdrant_service.create_hybrid_collection(
                     collection_name=collection_name,
-                    dense_vector_size=768,
-                    entity_vector_size=768,
+                    dense_vector_size=384,
+                    entity_vector_size=384,
                     sparse_vector_size=10000
                 )
                 logger.info(f"Collection hybride '{collection_name}' créée avec succès.")
             else:
                 qdrant_service.create_collection(
                     collection_name=collection_name,
-                    vector_size=768,
+                    vector_size=384,
                     distance="Cosine"
                 )
                 logger.info(f"Collection standard '{collection_name}' créée avec succès.")
@@ -86,9 +86,12 @@ class TraitementOrchestrator:
         :param initial_data: Donnée d'entrée pour démarrer le pipeline (ex: chemin du fichier à traiter).
         :return: Dictionnaire récapitulatif du résultat final du pipeline.
         """
+        import time
+        start_time = time.time()
         logger.info("Démarrage du pipeline de traitement...")
         
         final_result = self.pipeline.run(initial_data)
+        duration_s = time.time() - start_time
         
         # Log uniquement les informations pertinentes, pas le contenu complet
         log_result = {
@@ -105,5 +108,6 @@ class TraitementOrchestrator:
         if "llm_document_type" in final_result:
             log_result["llm_document_type"] = final_result.get("llm_document_type")
         
-        logger.info(f"Pipeline terminé, résultat: {log_result}")
+        logger.info(f"Pipeline terminé en {duration_s:.2f}s, résultat: {log_result}")
+        final_result["processing_time_s"] = round(duration_s, 2)
         return final_result

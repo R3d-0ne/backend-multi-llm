@@ -73,12 +73,12 @@ async def read_root():
 
         # Créer ou mettre à jour les collections (uniquement "documents" en hybride)
         summary = create_or_update_collections([
-            {"name": "contexts", "vector_size": 768},
-            {"name": "discussions", "vector_size": 768},
-            {"name": "history", "vector_size": 768},
+            {"name": "contexts", "vector_size": 384},
+            {"name": "discussions", "vector_size": 384},
+            {"name": "history", "vector_size": 384},
             {"name": "settings", "vector_size": 1},
-            {"name": "messages", "vector_size": 768},
-            {"name": "documents", "vector_size": 768},
+            {"name": "messages", "vector_size": 384},
+            {"name": "documents", "vector_size": 384},
         ])
  
         return {

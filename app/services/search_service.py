@@ -22,7 +22,7 @@ from ..libs.functions.global_functions import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Prompt système pour llama3.1 - format simplifié et direct
+# Prompt système pour llama3.1 -
 LLM_SYSTEM_PROMPT = """Tu es un assistant IA spécialisé dans l'analyse de documents. Ta tâche est de :
 
 1. Analyser précisément le contenu des documents fournis
