@@ -452,7 +452,7 @@ def create_bm25_sparse_vector(tokens, doc_tokens_list, vocab_size=10000, k1=1.5,
 def tokenize_and_create_sparse_vector(text, vocab_size=10000):
     """
     Tokenize le texte et crée un vecteur épars.
-    
+
     Args:
         text: Texte à tokenizer
         vocab_size: Taille du vocabulaire
@@ -463,6 +463,8 @@ def tokenize_and_create_sparse_vector(text, vocab_size=10000):
     tokens = tokenize_text(text)
     tokens_no_stopwords = remove_stopwords(tokens)
     return create_sparse_vector(tokens_no_stopwords, vocab_size)
+
+
 
 
 

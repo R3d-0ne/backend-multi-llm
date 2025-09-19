@@ -152,7 +152,7 @@ class StorageTask(Traitement):
                     logger.info(f"{self.name} - Ajout de {len(llm_keywords)} mots-clés LLM au vecteur sparse: {', '.join(llm_keywords)}")
                 
                 sparse_vector = create_sparse_vector(tokens_no_stopwords, vocab_size=10000)
-                
+
                 # 2. Structure des vecteurs pour le stockage hybride
                 vectors = {
                     "dense": dense_vector,
@@ -296,4 +296,4 @@ class StorageTask(Traitement):
                 cleanup_temp_directory(self.temp_dir)
                 self.temp_dir = None
 
-        return convert_numpy_types(result) 
+        return convert_numpy_types(result)

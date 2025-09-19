@@ -23,51 +23,35 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Prompt système pour llama3.1 -
-LLM_SYSTEM_PROMPT = """Tu es un assistant IA spécialisé dans l'analyse de documents. Ta tâche est de :
-
-1. Analyser précisément le contenu des documents fournis
-2. Répondre uniquement en te basant sur les informations présentes dans ces documents
-3. Ne pas faire d'hypothèses ou de suppositions non vérifiées
-4. Si une information n'est pas claire ou manquante, le dire explicitement
-5. Citer les documents sources pour chaque information importante
-6. Ne pas confondre les documents entre eux
-7. Être particulièrement attentif aux détails et aux nuances
-8. Si tu n'es pas sûr d'une information, le dire clairement
-9. Éviter les généralisations non justifiées
-10. Privilégier la précision à la quantité d'informations
-
-Format de réponse attendu :
-- Réponse directe et précise à la question
-- Citations des documents sources pour chaque information
-- Précision si une information est manquante ou ambiguë
-- Distinction claire entre les faits et les interprétations."""
-
-LLM_RERANKER_SYSTEM_PROMPT = """
-Tu es un assistant spécialisé dans l'évaluation de la pertinence des documents. Ta tâche est d'attribuer un score de 0 à 10 à chaque document en fonction de sa pertinence par rapport à la requête.
-
-Critères d'évaluation :
-1. Correspondance sémantique (0-4 points)
-   - Pertinence générale du contenu
-   - Présence des concepts clés
-   - Cohérence avec la requête
-
-2. Précision des informations (0-3 points)
-   - Exactitude des détails
-   - Actualité des informations
-   - Fiabilité des sources
-
-3. Exhaustivité (0-3 points)
-   - Couverture du sujet
-   - Profondeur des informations
-   - Complémentarité avec la requête
+LLM_SYSTEM_PROMPT = """Tu es un assistant IA spécialisé dans l'analyse de documents. Ton objectif est d'être le plus précis possible.
 
 Instructions :
-- Score 0-2 : Document non pertinent ou hors sujet
-- Score 3-5 : Document vaguement pertinent
-- Score 6-7 : Document pertinent avec quelques informations utiles
-- Score 8-10 : Document très pertinent et complet
+1. Analyse précisément le contenu des documents fournis.
+2. Réponds uniquement en te basant sur les informations présentes dans ces documents.
+3. Ne fais aucune supposition ou généralisation non justifiée.
+4. Si une information n'est pas claire ou manquante, indique-le explicitement par : "Information non trouvée dans les documents fournis.".
+5. Pour chaque information importante, cite le document source (ex : (Document 1)).
+6. Ne confonds jamais les documents entre eux.
+7. Privilégie la précision à la quantité d'informations.
+8. Utilise un format structuré :
+   - Réponse directe et précise à la question
+   - Citations des documents sources pour chaque information
+   - Précision si une information est manquante ou ambiguë
+   - Distinction claire entre faits et interprétations
+9. N'utilise aucune information externe ou connaissance générale.
 
-Retourne uniquement un nombre entier de 0 à 10 sans autre texte ou explication."""
+Exemple :
+Question : Quels sont les frais bancaires ?
+Réponse : Selon le Document 1, "Les frais bancaires sont de 10€ par mois." (Document 1)
+Si l’information n’est pas trouvée : "Information non trouvée dans les documents fournis."
+"""
+
+LLM_RERANKER_SYSTEM_PROMPT = """
+Tu es un assistant spécialisé dans l'évaluation de la pertinence des documents. Ton objectif est d'être le plus précis possible.
+Pour chaque document, attribue un score de 0 à 10 selon la pertinence par rapport à la requête.
+Retourne uniquement une liste de scores séparés par des virgules, sans aucun texte.
+Exemple : 8,6,4,9,7
+"""
 
 class SearchService:
     """
@@ -792,7 +776,7 @@ class SearchService:
             # Vérifier d'abord si le document a directement un champ "cleaned_text"
             if "cleaned_text" in result and isinstance(result["cleaned_text"], str) and result["cleaned_text"].strip():
                 document_text = result["cleaned_text"].strip()
-            
+
             # Sinon chercher dans le payload
             if not document_text and isinstance(payload, dict):
                 document_text = payload.get("cleaned_text", "")
@@ -980,8 +964,8 @@ Scores:"""
     def _generate_answer(self, results: List[Dict[str, Any]], query: str) -> str:
         """
         Génère une réponse basée sur le contexte des documents trouvés.
-        Utilise directement le LLM avec des param��tres optimisés pour llama3.1.
-        
+        Utilise directement le LLM avec des paramètres optimisés pour llama3.1.
+
         Args:
             results: Liste des résultats de recherche
             query: Requête de recherche
@@ -1094,32 +1078,8 @@ Scores:"""
         if "llama" in config_service.llm.model.lower():
             # Construction des messages pour l'API Chat avec prompt optimisé
             messages = [
-                {"role": "system", "content": """Tu es un assistant IA expert en analyse de documents administratifs français. Ta mission est de :
-
-1. ANALYSER précisément le contenu des documents fournis
-2. RÉPONDRE uniquement en te basant sur les informations présentes dans ces documents
-3. NE PAS faire d'hypothèses ou de suppositions non vérifiées
-4. SI une information n'est pas claire ou manquante, le dire explicitement
-5. CITER les documents sources pour chaque information importante
-6. NE PAS confondre les documents entre eux
-7. ÊTRE particulièrement attentif aux détails et aux nuances
-8. PRIVILÉGIER la précision à la quantité d'informations
-
-FORMAT DE RÉPONSE ATTENDU :
-- Réponse directe et structurée à la question
-- Citations précises des documents sources (ex: "Selon le Document 1...")
-- Précision si une information est manquante ou ambiguë
-- Distinction claire entre les faits et les interprétations
-- Utilisation d'un langage clair et professionnel
-
-IMPORTANT : Base-toi UNIQUEMENT sur les documents fournis. Ne pas ajouter d'informations externes."""},
-                {"role": "user", "content": f"""Voici les documents pertinents :
-
-{context_text}
-
-Question : {query}
-
-Analyse ces documents et réponds à la question en te basant uniquement sur leur contenu. Cite les documents sources pour chaque information importante."""}
+                {"role": "system", "content": """Tu es un assistant IA expert en analyse de documents administratifs français. Ton objectif est d'être le plus précis possible. Ta mission est de :\n\n1. ANALYSER précisément le contenu des documents fournis\n2. RÉPONDRE uniquement en te basant sur les informations présentes dans ces documents\n3. NE PAS faire d'hypothèses ou de suppositions non vérifiées\n4. SI une information n'est pas claire ou manquante, le dire explicitement par : 'Information non trouvée dans les documents fournis.'\n5. CITER les documents sources pour chaque information importante (ex : (Document 1))\n6. NE PAS confondre les documents entre eux\n7. ÊTRE particulièrement attentif aux détails et aux nuances\n8. PRIVILÉGIER la précision à la quantité d'informations\n9. N'utilise aucune information externe ou connaissance générale.\n\nFORMAT DE RÉPONSE ATTENDU :\n- Réponse directe et structurée à la question\n- Citations précises des documents sources (ex: 'Selon le Document 1...')\n- Précision si une information est manquante ou ambiguë\n- Distinction claire entre les faits et les interprétations\n- Utilisation d'un langage clair et professionnel\n\nExemple :\nQuestion : Quels sont les frais bancaires ?\nRéponse : Selon le Document 1, 'Les frais bancaires sont de 10€ par mois.' (Document 1)\nSi l’information n’est pas trouvée : 'Information non trouvée dans les documents fournis.'\n"""},
+                {"role": "user", "content": f"""Voici les documents pertinents :\n\n{context_text}\n\nQuestion : {query}\n\nAnalyse ces documents et réponds à la question en te basant uniquement sur leur contenu. Cite les documents sources pour chaque information importante."""}
             ]
             
             # API endpoint
@@ -1135,14 +1095,8 @@ Analyse ces documents et réponds à la question en te basant uniquement sur leu
             extract_function = lambda json_data: json_data.get("message", {}).get("content", "")
         else:
             # Construction du prompt pour les modèles non-chat
-            prompt = f"""Contexte de recherche :
+            prompt = f"""Contexte de recherche :\n\n{context_text}\n\nQuestion : {query}\n\nRéponds en te basant uniquement sur les informations des documents ci-dessus.\nSi une information n'est pas trouvée, écris : 'Information non trouvée dans les documents fournis.'\nPour chaque information, cite le document source (ex : (Document 1)).\nExemple :\nQuestion : Quels sont les frais bancaires ?\nRéponse : Selon le Document 1, 'Les frais bancaires sont de 10€ par mois.' (Document 1)\nSi l’information n’est pas trouvée : 'Information non trouvée dans les documents fournis.'\n"""
 
-{context_text}
-
-Question : {query}
-
-Réponds en te basant uniquement sur les informations des documents ci-dessus :"""
-            
             # API endpoint
             api_endpoint = f"{config_service.llm.base_url}/api/generate"
             payload = {
@@ -1377,27 +1331,10 @@ Réponds en te basant uniquement sur les informations des documents ci-dessus :"
                     
                     # Construction des messages pour l'API Chat
                     messages = [
-                        {"role": "system", "content": """Tu es un assistant spécialisé dans l'analyse de documents. Ta tâche est de :
-1. Analyser précisément le contenu des documents fournis
-2. Répondre uniquement en te basant sur les informations présentes dans ces documents
-3. Ne pas faire d'hypothèses ou de suppositions non vérifiées
-4. Si une information n'est pas claire ou manquante, le dire explicitement
-5. Citer les documents sources pour chaque information importante
-6. Ne pas confondre les documents entre eux
-
-Format de réponse attendu :
-- Réponse directe à la question
-- Citations des documents sources pour chaque information
-- Précision si une information est manquante ou ambiguë"""},
-                        {"role": "user", "content": f"""Voici les documents pertinents :
-
-{context_text}
-
-Question : {query}
-
-Analyse ces documents et réponds à la question en te basant uniquement sur leur contenu. Cite les documents sources pour chaque information importante."""}
+                        {"role": "system", "content": """Tu es un assistant spécialisé dans l'analyse de documents. Ton objectif est d'être le plus précis possible.\n1. Analyse précisément le contenu des documents fournis\n2. Réponds uniquement en te basant sur les informations présentes dans ces documents\n3. Ne fais aucune supposition ou généralisation non justifiée\n4. Si une information n'est pas claire ou manquante, indique-le explicitement par : 'Information non trouvée dans les documents fournis.'\n5. Pour chaque information importante, cite le document source (ex : (Document 1)).\n6. Ne confonds jamais les documents entre eux\n7. Privilégie la précision à la quantité d'informations\n8. N'utilise aucune information externe ou connaissance générale.\n\nFormat de réponse attendu :\n- Réponse directe à la question\n- Citations des documents sources pour chaque information\n- Précision si une information est manquante ou ambiguë\n\nExemple :\nQuestion : Quels sont les frais bancaires ?\nRéponse : Selon le Document 1, 'Les frais bancaires sont de 10€ par mois.' (Document 1)\nSi l’information n’est pas trouvée : 'Information non trouvée dans les documents fournis.'\n"""},
+                        {"role": "user", "content": f"""Voici les documents pertinents :\n\n{context_text}\n\nQuestion : {query}\n\nAnalyse ces documents et réponds à la question en te basant uniquement sur leur contenu. Cite les documents sources pour chaque information importante."""}
                     ]
-                    
+
                     # Appel à l'API de chat
                     response = requests.post(
                         f"{config_service.llm.base_url}/api/chat",
@@ -1453,14 +1390,8 @@ Analyse ces documents et réponds à la question en te basant uniquement sur leu
                     logger.info(f"Utilisation de l'API generate pour le modèle {config_service.llm.model}")
                     
                     # Construction du prompt pour l'API de génération
-                    prompt = f"""Contexte de recherche:
+                    prompt = f"""Contexte de recherche:\n\n{context_text}\n\nQuestion: {query}\n\nRéponds en te basant uniquement sur les informations des documents ci-dessus.\nSi une information n'est pas trouvée, écris : 'Information non trouvée dans les documents fournis.'\nPour chaque information, cite le document source (ex : (Document 1)).\nExemple :\nQuestion : Quels sont les frais bancaires ?\nRéponse : Selon le Document 1, 'Les frais bancaires sont de 10€ par mois.' (Document 1)\nSi l’information n’est pas trouvée : 'Information non trouvée dans les documents fournis.'\n"""
 
-{context_text}
-
-Question: {query}
-
-Réponds en te basant uniquement sur les informations des documents ci-dessus:"""
-                    
                     # Appel à l'API de génération
                     response = requests.post(
                         f"{config_service.llm.base_url}/api/generate",
@@ -1864,27 +1795,8 @@ Réponds en te basant uniquement sur les informations des documents ci-dessus:""
             if "llama" in config_service.llm.model.lower():
                 # Construction des messages pour l'API Chat
                 messages = [
-                    {"role": "system", "content": f"""Tu es un assistant spécialisé dans l'analyse de documents. Tu as accès au document "{document_title}" et tu peux répondre à des questions précises sur son contenu.
-
-Instructions importantes :
-1. Réponds UNIQUEMENT en te basant sur le contenu du document fourni
-2. Si une information n'est pas dans le document, dis-le clairement
-3. Cite des passages spécifiques du document quand c'est pertinent
-4. Sois précis et factuel
-5. Si le contexte de discussion est fourni, prends-le en compte pour mieux comprendre la question
-6. Structure ta réponse de manière claire et organisée
-
-Format de réponse :
-- Réponse directe à la question
-- Citations du document quand approprié
-- Précision si une information n'est pas disponible dans le document"""},
-                    {"role": "user", "content": f"""Contexte du document et de la discussion :
-
-{context}
-
-Question : {question}
-
-Analyse le document et réponds à la question en te basant uniquement sur son contenu. Si le contexte de discussion aide à comprendre la question, utilise-le également."""}
+                    {"role": "system", "content": f"""Tu es un assistant spécialisé dans l'analyse de documents. Ton objectif est d'être le plus précis possible. Tu as accès au document \"{document_title}\" et tu peux répondre à des questions précises sur son contenu.\n\nInstructions importantes :\n1. Réponds UNIQUEMENT en te basant sur le contenu du document fourni\n2. Si une information n'est pas dans le document, dis-le clairement par : 'Information non trouvée dans le document.'\n3. Cite des passages spécifiques du document quand c'est pertinent\n4. Sois précis et factuel\n5. Si le contexte de discussion est fourni, prends-le en compte pour mieux comprendre la question\n6. Structure ta réponse de manière claire et organisée\n\nFormat de réponse :\n- Réponse directe à la question\n- Citations du document quand approprié\n- Précision si une information n'est pas disponible dans le document\n\nExemple :\nQuestion : Quels sont les frais bancaires ?\nRéponse : Selon le document, 'Les frais bancaires sont de 10€ par mois.'\nSi l’information n’est pas trouvée : 'Information non trouvée dans le document.'\n"""},
+                    {"role": "user", "content": f"""Contexte du document et de la discussion :\n\n{context}\n\nQuestion : {question}\n\nAnalyse le document et réponds à la question en te basant uniquement sur son contenu. Si le contexte de discussion aide à comprendre la question, utilise-le également."""}
                 ]
                 
                 # Appel à l'API de chat
@@ -1909,14 +1821,8 @@ Analyse le document et réponds à la question en te basant uniquement sur son c
                 
             else:
                 # Pour d'autres modèles, utiliser l'API de génération
-                prompt = f"""Contexte du document et de la discussion :
+                prompt = f"""Contexte du document et de la discussion :\n\n{context}\n\nQuestion : {question}\n\nAnalyse le document et réponds à la question en te basant uniquement sur son contenu.\nSi une information n'est pas trouvée, écris : 'Information non trouvée dans le document.'\nPour chaque information, cite le document source.\nExemple :\nQuestion : Quels sont les frais bancaires ?\nRéponse : Selon le document, 'Les frais bancaires sont de 10€ par mois.'\nSi l’information n’est pas trouvée : 'Information non trouvée dans le document.'\n"""
 
-{context}
-
-Question : {question}
-
-Analyse le document et réponds à la question en te basant uniquement sur son contenu :"""
-                
                 response = requests.post(
                     f"{config_service.llm.base_url}/api/generate",
                     json={
